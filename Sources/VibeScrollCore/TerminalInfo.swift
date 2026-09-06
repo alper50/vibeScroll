@@ -1,0 +1,85 @@
+import Foundation
+
+/// Captures which terminal the CLI helper runs inside, so the daemon can later
+/// bring that exact window/tab to the front when the user clicks a bubble row.
+public enum TerminalInfo {
+    public struct Captured: Sendable, Equatable {
+        public let program: String?
+        public let tty: String?
+        /// A deep link that focuses the exact tab/pane, when the terminal offers
+        /// one (Warp sets `WARP_FOCUS_URL`, e.g. `warp://session/<uuid>`).
+        public let focusURL: String?
+        /// Bundle id of the application that started this process chain, from
+        /// `__CFBundleIdentifier`. Launch Services sets it on anything started
+        /// from the GUI and it is inherited by children, so it identifies the
+        /// host even when there is no terminal at all — which is exactly the
+        /// case for an agent running as an IDE extension rather than in an
+        /// integrated terminal (no `TERM_PROGRAM`, no tty).
+        public let hostBundleID: String?
+    }
+
+    /// Terminal identifiers read from the current process. All `nil` when there's
+    /// no terminal (e.g. an agent launched from CI), which leaves the
+    /// click-to-focus affordance disabled for that session.
+    public static func capture(
+        env: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Captured {
+        func nonEmpty(_ key: String) -> String? { env[key].flatMap { $0.isEmpty ? nil : $0 } }
+        return Captured(
+            program: nonEmpty("TERM_PROGRAM"),
+            tty: controllingTTY(),
+            focusURL: nonEmpty("WARP_FOCUS_URL"),
+            hostBundleID: nonEmpty("__CFBundleIdentifier")
+        )
+    }
+
+    /// The device path of the controlling terminal (e.g. `/dev/ttys003`). Hooks
+    /// run with stdio piped, so `isatty` on 0/1/2 usually fails. `/dev/tty` works
+    /// when the hook keeps the terminal's session; if the agent detaches it
+    /// (new session), we walk up the parent chain — the agent process (e.g.
+    /// `claude`) still owns the tty — and read its controlling terminal.
+    static func controllingTTY() -> String? {
+        for fd in Int32(0)...2 where isatty(fd) != 0 {
+            if let name = ttyname(fd) { return String(cString: name) }
+        }
+        if let fdTTY = ttyViaDevTTY() { return fdTTY }
+        return ttyViaAncestors()
+    }
+
+    private static func ttyViaDevTTY() -> String? {
+        let fd = open("/dev/tty", O_RDONLY)
+        guard fd >= 0 else { return nil }
+        defer { close(fd) }
+        guard let name = ttyname(fd) else { return nil }
+        return String(cString: name)
+    }
+
+    /// Walks up the process tree asking `ps` for each ancestor's controlling
+    /// terminal, returning the first real one as a `/dev/ttysNNN` path.
+    private static func ttyViaAncestors() -> String? {
+        var pid = getppid()
+        for _ in 0..<10 {
+            guard pid > 1 else { break }
+            if let tty = psField("tty", pid: pid),
+               tty != "??", tty != "-", !tty.isEmpty {
+                return tty.hasPrefix("/dev/") ? tty : "/dev/\(tty)"
+            }
+            guard let ppidStr = psField("ppid", pid: pid), let ppid = Int32(ppidStr) else { break }
+            pid = ppid
+        }
+        return nil
+    }
+
+    private static func psField(_ field: String, pid: Int32) -> String? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/ps")
+        process.arguments = ["-o", "\(field)=", "-p", "\(pid)"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        do { try process.run() } catch { return nil }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
