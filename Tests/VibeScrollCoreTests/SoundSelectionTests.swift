@@ -77,4 +77,36 @@ final class SoundSelectionTests: XCTestCase {
         XCTAssertTrue(SoundSelection.systemNames.contains("Glass"))
         XCTAssertTrue(SoundSelection.systemNames.contains("Ping"))
     }
+
+    // MARK: - Bundled sounds
+
+    func testBundledSurvivesTheRoundTrip() {
+        let choice = SoundSelection.bundled("Fart 1")
+        XCTAssertEqual(choice.encoded, "bundled:Fart 1")
+        XCTAssertEqual(SoundSelection.decode(choice.encoded), choice)
+        XCTAssertEqual(choice.displayName, "Fart 1")
+    }
+
+    func testBundledIsNotConfusedWithASystemSound() {
+        // One set is Apple's and one is ours. `NSSound` resolves both the same
+        // way, which is exactly why the stored value has to keep them apart.
+        XCTAssertNotEqual(SoundSelection.bundled("Fart 1"), SoundSelection.system("Fart 1"))
+        XCTAssertEqual(SoundSelection.decode("system:Fart 1"), nil)
+    }
+
+    func testANameThisBuildDoesNotShipIsRejected() {
+        // Rather than resolving to silence while the picker still shows a name.
+        XCTAssertNil(SoundSelection.decode("bundled:Trombone"))
+        XCTAssertNil(SoundSelection.decode("bundled:"))
+        // The name this shipped under before the set grew to four. A stored
+        // value naming a sound no longer bundled must fall back to the event's
+        // default rather than resolving to silence.
+        XCTAssertNil(SoundSelection.decode("bundled:Fart"))
+    }
+
+    func testBundledIsNotACustomFile() {
+        // `isCustom` drives the picker's "show the chosen file" row; a bundled
+        // sound already has its own entry and must not appear twice.
+        XCTAssertFalse(SoundSelection.bundled("Fart 1").isCustom)
+    }
 }

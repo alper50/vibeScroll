@@ -94,21 +94,29 @@ vibescroll run -- <your command>
 
 Three alerts, set independently in Settings → General: one when an agent
 finishes, one when it needs your input, one when you run out of quota. Each can
-be silenced, set to any of the 14 sounds macOS ships, or pointed at a file of
-your own. The defaults are distinct on purpose — Glass, Ping and Basso — so the
-three are tellable apart without looking.
+be silenced, set to any of the 14 sounds macOS ships, set to a sound bundled
+with the app, or pointed at a file of your own. The defaults are distinct on
+purpose — Fart 1, Ping and Basso — so the three are tellable apart without
+looking. Quota keeps Basso, macOS's error sound: it is the only one of the three
+that means something went wrong.
 
 vibeScroll plays these itself rather than attaching them to the notification.
 That means they are heard even with notifications turned off, and the app owns
 the choice — but it also means they ignore Focus. The notification banners are
 sent deliberately silent so nothing is ever announced twice.
 
-No sounds are bundled and none are downloaded. The system set costs nothing to
-ship and raises no licensing question; a file you pick is your own, so the same
-holds. Sourcing a curated pack was considered and deferred — on Freesound the
-licence varies per sound, and the CC-BY portion would require shipping
-attribution for what amounts to a few chimes. If a pack is ever added, CC0-only
-sources (Kenney, Pixabay, Freesound filtered to CC0) avoid that entirely.
+Four sounds are bundled, cut from one CC0 recording on Wikimedia Commons (see
+[NOTICE.md](NOTICE.md)). `build-app.sh` copies them into the bundle, where
+`NSSound(named:)` finds them alongside the system set — the same call resolves
+both, which is the whole integration.
+
+CC0 specifically, not merely "free": on Freesound and Commons alike the licence
+varies per file, and trimming one changes nothing about it — a third of a second
+of a CC BY-SA recording is still CC BY-SA, still share-alike, still a question
+to answer about an asset compiled into an application. Filtering by licence
+first is what avoids that; editing afterwards is not.
+`scripts/make-sounds.py` records the source, the licence and the exact windows
+kept, so the assets can be rebuilt rather than merely trusted.
 
 A burst is throttled to one sound every two seconds. Four agents finishing
 together should be one chime, not four overlapping ones.

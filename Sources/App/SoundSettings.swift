@@ -29,10 +29,12 @@ final class SoundSettings: ObservableObject {
 
         /// Distinct defaults so the three are tellable apart without looking.
         /// Quota gets Basso, macOS's error sound — it is the only one of the
-        /// three that means something went wrong.
+        /// three that means something went wrong, and the only one worth
+        /// interrupting for. Finishing is the cheerful one, so it gets the
+        /// bundled sound; needing input sits between them and stays a chime.
         var fallback: SoundSelection {
             switch self {
-            case .done: return .system("Glass")
+            case .done: return .bundled("Fart 1")
             case .waiting: return .system("Ping")
             case .quota: return .system("Basso")
             }
@@ -46,6 +48,9 @@ final class SoundSettings: ObservableObject {
     /// System sounds this Mac can actually load. Filtered once at startup so a
     /// name macOS has dropped never appears in the picker as a dead option.
     let availableSystemNames: [String]
+    /// Bundled sounds this build can actually load, filtered the same way: a
+    /// resource missing from the bundle must not appear as a dead option.
+    let availableBundledNames: [String]
 
     /// Several agents finishing at once would otherwise overlap into noise.
     /// First one through wins; the rest of the burst is dropped rather than
@@ -55,6 +60,7 @@ final class SoundSettings: ObservableObject {
 
     private init() {
         availableSystemNames = SoundSelection.systemNames.filter { NSSound(named: $0) != nil }
+        availableBundledNames = SoundSelection.bundledNames.filter { NSSound(named: $0) != nil }
         var loaded: [Event: SoundSelection] = [:]
         for event in Event.allCases {
             let stored = UserDefaults.standard.string(forKey: event.defaultsKey)
@@ -92,7 +98,10 @@ final class SoundSettings: ObservableObject {
         switch selection {
         case .silent:
             return nil
-        case .system(let name):
+        case .system(let name), .bundled(let name):
+            // `NSSound(named:)` searches the app bundle's Resources before the
+            // system sound folders, so one call resolves both — verified, not
+            // assumed.
             return NSSound(named: name)
         case .custom(let url):
             // byReference: false loads the data now, so playback doesn't stutter

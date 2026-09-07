@@ -298,6 +298,15 @@ struct SoundsSection: View {
                 ForEach(sounds.availableSystemNames, id: \.self) { name in
                     Text(name).tag(SoundSelection.system(name))
                 }
+                // Ours, in their own group: `NSSound` resolves them the same
+                // way, but they are not part of the set macOS ships and the
+                // picker should not imply that they are.
+                if !sounds.availableBundledNames.isEmpty {
+                    Divider()
+                    ForEach(sounds.availableBundledNames, id: \.self) { name in
+                        Text(name).tag(SoundSelection.bundled(name))
+                    }
+                }
                 // The current custom file is listed so the picker can display
                 // it; without a matching tag SwiftUI would show a blank row.
                 if current.isCustom {

@@ -26,6 +26,13 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BINDIR/vibescroll" "$APP/Contents/MacOS/vibescroll"
 cp "$ROOT/scripts/AppInfo.plist" "$APP/Contents/Info.plist"
 
+# Bundled alert sounds. `NSSound(named:)` searches Contents/Resources before the
+# system sound folders, so copying them here is the whole integration.
+# Regenerate with: python3 scripts/make-sounds.py
+if [ -d "$ROOT/Resources/Sounds" ]; then
+  cp "$ROOT/Resources/Sounds/"*.wav "$APP/Contents/Resources/" 2>/dev/null || true
+fi
+
 # Ad-hoc sign so the bundle has a stable identity for the notification centre
 # and the keychain; without any signature macOS treats each build as a new app.
 codesign --force --sign - "$APP" || echo "warning: codesign failed (continuing unsigned)"

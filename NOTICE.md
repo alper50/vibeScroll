@@ -53,6 +53,20 @@ rather than adapted:
   `limits` array carrying the provider's own `severity`, which this reads in
   preference, falling back to the old shape.
 
+## Bundled assets
+
+The four sounds in `Resources/Sounds/` are cut from
+[Farting sound effects](https://commons.wikimedia.org/wiki/File:Farting_sound_effects.webm),
+uploaded to Wikimedia Commons by *Atsme* under the **Creative Commons CC0 1.0
+Universal Public Domain Dedication**. CC0 carries no attribution requirement; it
+is recorded here because knowing where a binary in the repository came from is
+worth more than the obligation.
+
+Chosen over the CC BY-SA fart recordings on Commons deliberately: share-alike on
+an asset compiled into an application raises a question better not raised, and
+cutting a clip out of one would not have changed its licence. The four windows,
+fades and normalisation are reproducible via `scripts/make-sounds.py`.
+
 ## What was deliberately left behind
 
 **Not wanted:** the pet sprite system, the pet gallery and its mirrored
