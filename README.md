@@ -7,7 +7,7 @@ When an agent runs `git rebase`, you get a card about rebasing. When it edits a
 lockfile, you get a card about lockfiles. The card never takes focus, never
 blocks the agent, and paces itself so it stays useful instead of chatty.
 
-Supports 11 agents through their own hook systems, plus a universal wrapper for
+Supports 12 agents through their own hook systems, plus a universal wrapper for
 anything else.
 
 ## How it works
@@ -84,9 +84,11 @@ vibescroll run -- <your command>
 
 ## Sounds
 
-Two alerts, set independently in Settings → General: one when an agent finishes,
-one when it needs your input. Each can be silenced, set to any of the 14 sounds
-macOS ships, or pointed at a file of your own.
+Three alerts, set independently in Settings → General: one when an agent
+finishes, one when it needs your input, one when you run out of quota. Each can
+be silenced, set to any of the 14 sounds macOS ships, or pointed at a file of
+your own. The defaults are distinct on purpose — Glass, Ping and Basso — so the
+three are tellable apart without looking.
 
 vibeScroll plays these itself rather than attaching them to the notification.
 That means they are heard even with notifications turned off, and the app owns
@@ -207,7 +209,7 @@ something:
 
 Token counts come from the agent's own transcript and are read incrementally
 from a stored byte offset, so repeated scans never double-count. Only Claude
-Code and Codex write a transcript we can read; the other nine agents show no
+Code and Codex write a transcript we can read; the other ten agents show no
 count at all rather than a misleading zero. A session that was already running
 when the app starts banks its whole history on the first scan, which is what
 makes the figure a session total rather than "since launch".
@@ -222,6 +224,30 @@ that can explain it; it does not go on a card.
 For an agent running as an IDE extension there is no `TERM_PROGRAM` and no tty
 at all, so the host is identified by `__CFBundleIdentifier`, which Launch
 Services sets on GUI-started processes and children inherit.
+
+## Not built yet
+
+Tracked here so the absences are choices on record rather than things nobody
+noticed. Roughly in the order they are worth doing:
+
+| Gap | Why it matters |
+| --- | --- |
+| **Launch at login** | A menu-bar daemon you have to remember to start is off exactly when you need it. Hooks queue to disk meanwhile, so nothing is lost — but nothing is shown either. The smallest real gap and the most annoying one. |
+| **Agent icons in the session list** | Rows read as text labels today. Brand marks would make a six-session list scannable at a glance. |
+| **Session history** | `prune` deletes a session ten minutes after it goes idle. Nothing about what you worked on survives a restart, and it cannot be backfilled — the data you do not record today is gone. |
+| **Per-project usage totals** | Tokens are counted per session and then discarded. Rolled up per project and per day they would answer "where did this week go", which nothing else can. |
+| **Auto-update** | Deferred on purpose: it needs a distribution story first — Developer ID signing, notarization and somewhere to host an appcast. Premature before there is anything to update from. |
+| **Localization** | English only. |
+
+Deliberately **not** planned:
+
+- **The approval gate.** AgentPet can hold a `PreToolUse` hook's socket open and
+  block the tool call until you allow or deny it from the UI. It is clever, and
+  it puts this app on the critical path of every gated tool call — a bug there
+  stalls your agent. A monitoring tool should not be able to do that.
+- **Cloud sync, leaderboards, the tamagotchi economy, the pet gallery.** Out of
+  scope, and the gallery's art carries licence questions this project has no
+  reason to inherit.
 
 ## Attribution
 
