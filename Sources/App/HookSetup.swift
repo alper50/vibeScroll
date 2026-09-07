@@ -47,3 +47,30 @@ enum HookSetup {
             path: spec.settingsPath, events: spec.events, style: spec.style)
     }
 }
+
+extension HookSetup {
+    /// Rewrites hooks left pointing at a copy of the app that is no longer there.
+    ///
+    /// The hook fails open by design — every path exits 0 — so a stale path
+    /// breaks nothing and reports nothing: the agent runs exactly as before
+    /// while vibeScroll goes quietly blind. Dragging the app from Downloads to
+    /// Applications after installing hooks is enough to cause it, which makes
+    /// this the most likely first experience anyone downloading it will have.
+    ///
+    /// Repaired only when the old binary is *gone*. A path that still exists is
+    /// a second install those hooks may be aimed at on purpose, and two copies
+    /// rewriting each other on every launch would be worse than the problem.
+    @discardableResult
+    static func repairMovedInstalls() -> [AgentKind] {
+        var repaired: [AgentKind] = []
+        for agent in AgentCatalog.all {
+            guard let spec = AgentHooks.spec(for: agent.kind) else { continue }
+            let status = HookInstaller.pathStatus(
+                path: spec.settingsPath, style: spec.style, currentBinary: binaryPath)
+            guard case .elsewhere(let previous) = status,
+                  !FileManager.default.fileExists(atPath: previous) else { continue }
+            if (try? install(agent.kind)) != nil { repaired.append(agent.kind) }
+        }
+        return repaired
+    }
+}

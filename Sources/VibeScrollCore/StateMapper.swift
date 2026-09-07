@@ -18,6 +18,38 @@ public enum StateMapper {
         }
     }
 
+    /// Events that mean the agent just *entered* a tool call, and so will be
+    /// silent until that call returns.
+    ///
+    /// Nothing is emitted while a tool runs, which makes a ten-minute build look
+    /// exactly like a dead agent to `SessionStore.prune`. Knowing the session is
+    /// inside a call is what lets pruning wait longer before declaring it gone.
+    ///
+    /// There is deliberately no matching "tool ended" list: the flag is cleared
+    /// by the next event of any kind, so it stays set for precisely the window
+    /// where the agent is legitimately quiet. Agents whose `PreToolUse` we
+    /// refuse to register (Copilot, Kiro, Grok) simply keep the short window.
+    public static func isToolCallStart(for kind: AgentKind, eventName: String) -> Bool {
+        switch kind {
+        case .claude, .codex, .droid, .copilot, .antigravity:
+            return eventName == "PreToolUse"
+        case .kiroCLI:
+            return eventName == "preToolUse" || eventName == "PreToolUse"
+        case .cursor:
+            return eventName == "preToolUse" || eventName == "beforeShellExecution"
+        case .gemini:
+            return eventName == "BeforeTool"
+        case .grok:
+            return eventName == "pre_tool_use"
+        case .pi:
+            return eventName == "tool_execution_start"
+        // Windsurf and opencode report only turn boundaries, and the `run`
+        // wrapper sends normalised states on its own heartbeat.
+        case .windsurf, .opencode, .cli, .unknown:
+            return false
+        }
+    }
+
     public static func state(for kind: AgentKind, eventName: String) -> AgentState? {
         // Generic: any caller (e.g. the `vibescroll run` wrapper) can send a
         // normalised state name directly.

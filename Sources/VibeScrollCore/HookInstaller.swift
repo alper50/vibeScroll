@@ -327,3 +327,70 @@ public enum HookInstaller {
         }
     }
 }
+
+// MARK: - Where an installed hook actually points
+
+/// Whether an agent's installed hook still points at the binary asking.
+public enum HookPathStatus: Equatable, Sendable {
+    case notInstalled
+    case current
+    /// Installed, but aimed at a different binary. The path travels with the
+    /// case because the caller has to tell two very different situations apart:
+    /// a path that no longer exists is an app somebody moved, and a path that
+    /// is still there is a second copy that must be left alone.
+    case elsewhere(String)
+}
+
+extension HookInstaller {
+
+    /// Every command string belonging to us anywhere in a settings tree.
+    ///
+    /// A recursive walk rather than five per-style readers on purpose: the
+    /// layouts differ in *where* the command sits, not in what it looks like,
+    /// so one scan cannot fall out of date when a sixth agent is added.
+    public static func ourCommands(in node: Any) -> [String] {
+        if let text = node as? String { return isOurs(text) ? [text] : [] }
+        if let array = node as? [Any] { return array.flatMap(ourCommands(in:)) }
+        if let dict = node as? [String: Any] { return dict.values.flatMap(ourCommands(in:)) }
+        return []
+    }
+
+    /// The binary a generated plugin file points at.
+    ///
+    /// These files are JavaScript and TypeScript rather than JSON, but we wrote
+    /// every line of them, so the path is a plain double-quoted absolute path
+    /// and the only one in the file.
+    static func pluginBinary(in source: String) -> String? {
+        var candidates: [String] = []
+        var current: String?
+        for character in source {
+            if character == "\"" {
+                if let value = current { candidates.append(value); current = nil } else { current = "" }
+            } else if current != nil {
+                current?.append(character)
+            }
+        }
+        return candidates.first { $0.hasPrefix("/") && $0.contains("vibescroll") }
+    }
+
+    /// Reads an agent's config and reports whether its hook still points here.
+    public static func pathStatus(
+        path: String, style: HookStyle, currentBinary: String
+    ) -> HookPathStatus {
+        switch style {
+        case .opencodePlugin, .piExtension:
+            guard let source = try? String(contentsOfFile: path, encoding: .utf8),
+                  isOurs(source) else { return .notInstalled }
+            guard let binary = pluginBinary(in: source) else { return .current }
+            return binary == currentBinary ? .current : .elsewhere(binary)
+
+        case .claudeNested, .cursorFlat, .windsurfFlat, .kiroFlat, .antigravityNested:
+            guard let settings = try? readSettings(path: path) else { return .notInstalled }
+            let paths = ourCommands(in: settings).map(binaryPath(fromCommand:))
+            guard let first = paths.first else { return .notInstalled }
+            // Any entry pointing here counts as current: a partial rewrite is
+            // repaired by reinstalling, which is what the caller does anyway.
+            return paths.contains(currentBinary) ? .current : .elsewhere(first)
+        }
+    }
+}

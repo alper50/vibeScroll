@@ -45,7 +45,7 @@ Two rules the whole design follows:
 | --- | --- |
 | `Sources/VibeScrollCore/` | Pure logic: event decoding, state machine, category resolution, pacing. No AppKit, fully tested. |
 | `Sources/App/` | The macOS app: daemon, menu bar, card panel, settings — plus the `hook` and `run` CLI roles. |
-| `Tests/` | 127 tests over the core. |
+| `Tests/` | 202 tests over the core. |
 
 The teaching content is served by a separate repository,
 [vibeScroll-backend](../vibeScroll-backend). The two are coupled only by an
@@ -73,8 +73,16 @@ open build/vibeScroll.app
 ```
 
 Then open **Settings → Integrations** and install the hook for each agent you
-use. The hook command points at the app bundle's binary, so rebuilding to a
-different location means reinstalling the hooks.
+use. The first launch opens this window by itself: a menu bar app that starts
+with no visible result is a poor place to guess from.
+
+The hook command points at the app bundle's binary by absolute path, so moving
+the app disconnects every hook — silently, because the hook fails open and the
+agent carries on exactly as before while vibeScroll goes blind. Each launch
+checks where the installed hooks point and rewrites them if the binary they
+name is gone. A path that still exists is left alone: that is a second copy the
+hooks may be aimed at deliberately, and two installs rewriting each other on
+every launch would be worse than the problem.
 
 For an agent with no hook system, wrap it:
 
@@ -146,6 +154,51 @@ back or refreshed — but the endpoint is not a published API and the request
 identifies itself as Claude Code, so it can stop working without notice. That
 trade is stated in the Settings footer too, so it can be judged without reading
 the source.
+
+## Task queue
+
+A rate-limit window that expires unused is gone. Settings → Tasks holds a list
+of prompts to spend one on.
+
+Each task runs in its own git worktree under `~/.vibescroll/worktrees/`, on a
+`vibescroll/<slug>` branch cut from the project's HEAD. A worktree *is* a
+branch, so nothing is given up: `git log`, `git diff main..vibescroll/<slug>`
+and `cherry-pick` all work from the main repository. What is gained is that the
+branch somebody left checked out is never touched — which matters because a
+task can still be running when they come back. A clean run is committed; a
+failed one is left as it fell, where the working tree shows how far it got.
+Nothing is ever pushed or merged.
+
+Deleting a task removes its checkout and its log, and the cleanup runs on git's
+own terms rather than on invented rules. `git worktree remove` without
+`--force` refuses a checkout holding uncommitted changes, so a failed run
+cannot be swept away by accident — the row turns into an explicit *Delete
+anyway*. `git branch -d` (never `-D`) refuses a branch holding unmerged
+commits, so a finished task's work survives while the empty branch left by a
+task that changed nothing is cleared. The bulk *Clean up finished* button never
+forces: it reports what it kept back and why.
+
+Two windows are spent for opposite reasons, so `TaskRunway` gates them
+differently:
+
+| Window | Why | Gate |
+| --- | --- | --- |
+| Session (5h) | Expires whether or not it was spent, so filling it is the point | A ceiling only, high enough to avoid walking into a rate limit |
+| Weekly | The scarce one; filling every session window exhausts it by midweek | Pace — usage against how far through the week we are — plus a reserve held back until the remainder would expire anyway |
+
+The pace rule is the whole idea. At 85% spent with 67% of the week gone, the
+queue holds: that spending is running ahead of the clock and comes out of days
+still to be worked. At 88% with three hours left, it runs: that quota is about
+to expire regardless.
+
+Only Claude Code has a verified headless invocation, so it is the only agent a
+task launches today; `AgentLaunch` returns `nil` for the rest rather than
+guessing at an invocation and spending a window on it. The isolation is plain
+git, so nothing about it is Claude-specific.
+
+**Not automatic yet.** Tasks run when you press *Run now*. The gate above is
+computed and displayed but nothing acts on it — the mechanism is worth proving
+with a person pressing the button before it is trusted to start work at 03:00.
 
 ## Content
 
@@ -232,7 +285,6 @@ noticed. Roughly in the order they are worth doing:
 
 | Gap | Why it matters |
 | --- | --- |
-| **Launch at login** | A menu-bar daemon you have to remember to start is off exactly when you need it. Hooks queue to disk meanwhile, so nothing is lost — but nothing is shown either. The smallest real gap and the most annoying one. |
 | **Agent icons in the session list** | Rows read as text labels today. Brand marks would make a six-session list scannable at a glance. |
 | **Session history** | `prune` deletes a session ten minutes after it goes idle. Nothing about what you worked on survives a restart, and it cannot be backfilled — the data you do not record today is gone. |
 | **Per-project usage totals** | Tokens are counted per session and then discarded. Rolled up per project and per day they would answer "where did this week go", which nothing else can. |

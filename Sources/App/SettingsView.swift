@@ -3,22 +3,35 @@ import UniformTypeIdentifiers
 import VibeScrollCore
 
 struct SettingsView: View {
+    /// Tagged so the setup checklist can send somebody to the tab that finishes
+    /// the step it is describing.
+    enum Tab: Hashable { case general, integrations, content, tasks }
+
+    @State private var tab: Tab = .general
+
     var body: some View {
-        TabView {
-            GeneralSettingsView()
+        TabView(selection: $tab) {
+            GeneralSettingsView(tab: $tab)
                 .tabItem { Label("General", systemImage: "gearshape") }
+                .tag(Tab.general)
             IntegrationsSettingsView()
                 .tabItem { Label("Integrations", systemImage: "puzzlepiece.extension") }
+                .tag(Tab.integrations)
             ContentSettingsView()
                 .tabItem { Label("Content", systemImage: "books.vertical") }
+                .tag(Tab.content)
+            TasksSettingsView()
+                .tabItem { Label("Tasks", systemImage: "checklist") }
+                .tag(Tab.tasks)
         }
-        .frame(width: 520, height: 420)
+        .frame(width: 560, height: 460)
     }
 }
 
 // MARK: - General
 
 struct GeneralSettingsView: View {
+    @Binding var tab: SettingsView.Tab
     @ObservedObject private var cards = CardController.shared
     @AppStorage("vibescroll.pacing") private var pacing = Pacing.normal.rawValue
 
@@ -44,6 +57,9 @@ struct GeneralSettingsView: View {
 
     var body: some View {
         Form {
+            SetupChecklist(tab: $tab)
+            StartupSection()
+
             Section {
                 Toggle("Show info cards", isOn: $cards.enabled)
 
@@ -74,6 +90,116 @@ struct GeneralSettingsView: View {
         .formStyle(.grouped)
         .onAppear {
             CardController.shared.apply(policy: (Pacing(rawValue: pacing) ?? .normal).policy)
+        }
+    }
+}
+
+/// First-run guidance.
+///
+/// Launching a menu bar app produces no visible result — an icon joins fifteen
+/// others — and the three things that make vibeScroll do anything all live
+/// behind tabs. The checklist names them, shows which are already done, and
+/// takes you to the one that is not. It goes away for good once dismissed.
+struct SetupChecklist: View {
+    @Binding var tab: SettingsView.Tab
+    @AppStorage("vibescroll.setupDismissed") private var dismissed = false
+    @ObservedObject private var content = ContentStore.shared
+    @ObservedObject private var loginItem = LoginItem.shared
+    /// Reading every agent's config is disk work, so it happens when the window
+    /// appears or comes forward rather than on each redraw.
+    @State private var anyHookInstalled = false
+
+    var body: some View {
+        if !dismissed {
+            Section {
+                step(done: anyHookInstalled,
+                     title: "Connect your agents",
+                     detail: "vibeScroll sees nothing at all until one agent's hooks are installed.",
+                     jump: .integrations)
+                step(done: content.count > 0,
+                     title: "Point at a card backend",
+                     detail: content.count > 0
+                        ? "\(content.count) cards ready."
+                        : "No cards yet. The default backend runs on this machine.",
+                     jump: .content)
+                step(done: loginItem.state.isOn,
+                     title: "Start at login",
+                     detail: "A menu bar app you have to remember to open is off exactly when it is needed.",
+                     jump: nil)
+            } header: {
+                HStack {
+                    Text("Setup")
+                    Spacer()
+                    Button("Dismiss") { dismissed = true }.font(.caption)
+                }
+            }
+            .onAppear(perform: refresh)
+            .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
+                refresh()
+            }
+        }
+    }
+
+    private func refresh() {
+        anyHookInstalled = AgentCatalog.all.contains { HookSetup.isInstalled($0.kind) }
+    }
+
+    private func step(
+        done: Bool, title: String, detail: String, jump: SettingsView.Tab?
+    ) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: done ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(done ? Color.green : Color.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                Text(detail).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            if let jump, !done {
+                Button("Open") { tab = jump }.font(.caption)
+            }
+        }
+    }
+}
+
+/// Launch at login. Its own section because it is about the app rather than
+/// about cards: a menu-bar daemon nobody remembers to start is off exactly when
+/// it is needed.
+struct StartupSection: View {
+    @ObservedObject private var loginItem = LoginItem.shared
+
+    var body: some View {
+        Section {
+            Toggle("Start at login", isOn: Binding(
+                get: { loginItem.state.isOn },
+                set: { loginItem.set($0) }
+            ))
+            .disabled(isBlocked)
+        } footer: {
+            Text(caption).font(.caption).foregroundStyle(.secondary)
+        }
+        // The user can switch this off in System Settings behind our back, so
+        // the displayed state is re-read rather than remembered.
+        .onAppear { loginItem.refresh() }
+    }
+
+    private var isBlocked: Bool {
+        switch loginItem.state {
+        case .blockedByUser, .unavailable: return true
+        case .on, .off: return false
+        }
+    }
+
+    private var caption: String {
+        switch loginItem.state {
+        case .on:
+            return "vibeScroll starts with your Mac."
+        case .off:
+            return "Agent events are queued to disk while vibeScroll is closed, so none are lost — but none are shown either."
+        case .blockedByUser:
+            return "Turned off in System Settings \u{203A} General \u{203A} Login Items. Re-enable it there."
+        case .unavailable(let message):
+            return message
         }
     }
 }
@@ -251,6 +377,13 @@ struct IntegrationsSettingsView: View {
             }
         }
         .onAppear(perform: refresh)
+        // The settings window is reused rather than rebuilt, so `onAppear` runs
+        // once and never again. Anything that changed an agent's config in the
+        // meantime — a reinstall to a new path, an edit by hand, another
+        // machine syncing the file — would leave this list describing the past.
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
+            refresh()
+        }
     }
 
     private func refresh() {

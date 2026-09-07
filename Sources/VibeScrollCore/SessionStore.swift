@@ -13,6 +13,11 @@ public final class SessionStore {
     /// Working/waiting sessions with no update for this long are removed: the
     /// agent almost certainly died without a `Stop` event.
     public var staleActiveAfter: TimeInterval
+    /// The same, for a session that went quiet *inside a tool call*. A build or
+    /// a test suite reports nothing while it runs, so the short window made a
+    /// ten-minute one vanish from the list mid-run and reappear as `done` when
+    /// it finished. Silence there is expected, not evidence of death.
+    public var staleToolCallAfter: TimeInterval
     /// A merely `registered` session (agent open but never started working) is
     /// dropped sooner: it reappears as `working` the moment the agent does
     /// anything, so a quiet/abandoned one shouldn't linger as "running".
@@ -23,10 +28,12 @@ public final class SessionStore {
     public init(doneToIdleAfter: TimeInterval = 30,
                 removeIdleAfter: TimeInterval = 600,
                 staleActiveAfter: TimeInterval = 300,
+                staleToolCallAfter: TimeInterval = 1800,
                 staleRegisteredAfter: TimeInterval = 90) {
         self.doneToIdleAfter = doneToIdleAfter
         self.removeIdleAfter = removeIdleAfter
         self.staleActiveAfter = staleActiveAfter
+        self.staleToolCallAfter = staleToolCallAfter
         self.staleRegisteredAfter = staleRegisteredAfter
     }
 
@@ -97,6 +104,13 @@ public final class SessionStore {
             toolName: event.toolName, target: event.toolTarget
         )
 
+        // Recomputed on every event rather than only being set: any event that
+        // is not a tool-call start clears it, which is exactly when the agent
+        // has started reporting again.
+        let inToolCall = StateMapper.isToolCallStart(
+            for: event.agentKind, eventName: event.eventName
+        )
+
         if var existing = byID[event.sessionId] {
             if existing.state != state { existing.stateSince = now }
             existing.state = state
@@ -108,6 +122,7 @@ public final class SessionStore {
             if let focusURL = event.terminalFocusURL { existing.terminalFocusURL = focusURL }
             if let host = event.hostBundleID { existing.hostBundleID = host }
             if let toolName = event.toolName { existing.toolName = toolName }
+            existing.isInToolCall = inToolCall
             if let resolvedTopic, resolvedTopic != existing.topic {
                 existing.topic = resolvedTopic
                 existing.topicSince = now
@@ -125,6 +140,7 @@ public final class SessionStore {
             message: event.message,
             model: event.model,
             toolName: event.toolName,
+            isInToolCall: inToolCall,
             topic: resolvedTopic,
             source: .hook,
             updatedAt: now,
@@ -157,7 +173,11 @@ public final class SessionStore {
             case .registered:
                 if quiet >= staleRegisteredAfter { byID.removeValue(forKey: id) }
             case .working, .waiting:
-                if quiet >= staleActiveAfter { byID.removeValue(forKey: id) }
+                // Inside a tool call the agent is *meant* to be silent for as
+                // long as the tool takes; only the short window carries the
+                // meaning "died without a Stop".
+                let limit = session.isInToolCall ? staleToolCallAfter : staleActiveAfter
+                if quiet >= limit { byID.removeValue(forKey: id) }
             }
         }
     }

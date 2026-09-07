@@ -112,8 +112,37 @@ final class SessionStoreTests: XCTestCase {
 
     func testPruneDropsSilentActiveSessions() {
         let store = SessionStore(staleActiveAfter: 300)
-        store.apply(event("PreToolUse"), now: t0)
+        // Deliberately not a PreToolUse: silence there is a running tool call
+        // and earns the longer window. This is the other case — the agent was
+        // between calls and simply stopped reporting.
+        store.apply(event("UserPromptSubmit"), now: t0)
         store.prune(now: t0.addingTimeInterval(301))
+        XCTAssertNil(store.session(id: "s1"))
+    }
+
+    func testASessionInsideAToolCallSurvivesTheShortStaleWindow() {
+        let store = SessionStore(staleActiveAfter: 300, staleToolCallAfter: 1800)
+        // A ten-minute build: PreToolUse fires, then the agent reports nothing
+        // at all until the command returns.
+        store.apply(event("PreToolUse", tool: "Bash", target: "swift test"), now: t0)
+        store.prune(now: t0.addingTimeInterval(601))
+        XCTAssertNotNil(store.session(id: "s1"), "a running tool call must not read as a dead agent")
+    }
+
+    func testASessionInsideAToolCallIsStillDroppedEventually() {
+        let store = SessionStore(staleActiveAfter: 300, staleToolCallAfter: 1800)
+        store.apply(event("PreToolUse", tool: "Bash", target: "swift test"), now: t0)
+        store.prune(now: t0.addingTimeInterval(1801))
+        XCTAssertNil(store.session(id: "s1"))
+    }
+
+    func testTheToolCallGraceEndsWithTheNextEvent() {
+        let store = SessionStore(staleActiveAfter: 300, staleToolCallAfter: 1800)
+        store.apply(event("PreToolUse", tool: "Bash", target: "swift test"), now: t0)
+        // The tool returned, so silence means the agent died again — the long
+        // window must not stay latched once it is reporting.
+        store.apply(event("PostToolUse", tool: "Bash", target: "swift test"), now: t0.addingTimeInterval(60))
+        store.prune(now: t0.addingTimeInterval(60 + 301))
         XCTAssertNil(store.session(id: "s1"))
     }
 

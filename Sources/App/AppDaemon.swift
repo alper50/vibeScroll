@@ -157,6 +157,9 @@ final class AppDaemon: ObservableObject {
     /// stall produced ten error records, of which nine resolved themselves.
     private func reportRateLimit(_ errors: [TranscriptAPIError], sessionId: String) {
         guard errors.contains(where: { $0.kind == .rateLimit && $0.isFinalAttempt }) else { return }
+        // Same reason as `notifyIfNeeded`: a rate-limited task is put back in
+        // line by the runner, which says so itself.
+        guard !TaskQueueStore.shared.ownsSession(sessionId) else { return }
         let project = store.session(id: sessionId)?.project.map(ProjectPath.displayName)
             ?? sessionId
         NotificationManager.shared.notify(
@@ -262,6 +265,11 @@ final class AppDaemon: ObservableObject {
 
     private func notifyIfNeeded(before: AgentState?, session: AgentSession) {
         guard session.state != before else { return }
+        // A queued task announces its own outcome, and does it better: the
+        // runner knows whether the run hit a rate limit, timed out or simply
+        // failed, none of which a state transition can tell apart. Alerting
+        // here as well would report every task twice.
+        guard !TaskQueueStore.shared.ownsSession(session.id) else { return }
         let project = session.project.map(ProjectPath.displayName) ?? session.id
         switch session.state {
         case .waiting:

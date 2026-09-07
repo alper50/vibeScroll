@@ -98,6 +98,23 @@ final class EventPipelineTests: XCTestCase {
         XCTAssertEqual(decoded.count, 1)
     }
 
+    func testToolCallStartIsRecognisedPerAgentDialect() {
+        XCTAssertTrue(StateMapper.isToolCallStart(for: .claude, eventName: "PreToolUse"))
+        XCTAssertTrue(StateMapper.isToolCallStart(for: .cursor, eventName: "beforeShellExecution"))
+        XCTAssertTrue(StateMapper.isToolCallStart(for: .gemini, eventName: "BeforeTool"))
+        XCTAssertTrue(StateMapper.isToolCallStart(for: .grok, eventName: "pre_tool_use"))
+        XCTAssertTrue(StateMapper.isToolCallStart(for: .pi, eventName: "tool_execution_start"))
+
+        // Case belongs to the agent, not to us: Claude never sends camelCase.
+        XCTAssertFalse(StateMapper.isToolCallStart(for: .claude, eventName: "preToolUse"))
+        // The end of a call, and a turn boundary, both mean the agent is
+        // reporting again — neither may extend the grace period.
+        XCTAssertFalse(StateMapper.isToolCallStart(for: .claude, eventName: "PostToolUse"))
+        XCTAssertFalse(StateMapper.isToolCallStart(for: .claude, eventName: "Stop"))
+        // The run wrapper heartbeats on its own, so it needs no grace at all.
+        XCTAssertFalse(StateMapper.isToolCallStart(for: .cli, eventName: "working"))
+    }
+
     func testAcceptErrorDefaultsToBackoffNotATightLoop() {
         XCTAssertEqual(EventSocketServer.acceptErrorAction(errno: EINTR), .retryImmediately)
         XCTAssertEqual(EventSocketServer.acceptErrorAction(errno: EBADF), .stop)

@@ -15,6 +15,11 @@ public struct AgentSession: Identifiable, Sendable, Equatable {
     public var model: String?
     /// Tool the agent last invoked. Sticky within a state, cleared on `done`.
     public var toolName: String?
+    /// Whether the last event was the *start* of a tool call, meaning the agent
+    /// is inside one and will report nothing until it returns. Pruning reads it
+    /// to tell a long build apart from an agent that died — see
+    /// `StateMapper.isToolCallStart`.
+    public var isInToolCall: Bool
     /// Topic the session is currently working on, resolved by `CategoryResolver`
     /// from the latest tool event. Drives which info card is shown. Sticky: a
     /// tool event with no usable signal keeps the previous topic rather than
@@ -55,6 +60,7 @@ public struct AgentSession: Identifiable, Sendable, Equatable {
         message: String? = nil,
         model: String? = nil,
         toolName: String? = nil,
+        isInToolCall: Bool = false,
         topic: TopicCategory? = nil,
         source: AgentSource,
         updatedAt: Date,
@@ -76,6 +82,7 @@ public struct AgentSession: Identifiable, Sendable, Equatable {
         self.message = message
         self.model = model
         self.toolName = toolName
+        self.isInToolCall = isInToolCall
         self.topic = topic
         self.source = source
         self.updatedAt = updatedAt
