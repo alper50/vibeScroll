@@ -8,36 +8,81 @@ import VibeScrollCore
 /// from the editor or terminal the user is typing in. A teaching aid that
 /// interrupts is worse than no teaching aid.
 @MainActor
-final class CardWindowController: NSObject, NSWindowDelegate {
+final class CardWindowController: NSObject {
     static let shared = CardWindowController()
 
     private var panel: NSPanel?
-    private static let originKey = "vibescroll.cardOrigin"
     private static let size = NSSize(width: CardLayout.width, height: CardLayout.cardHeight)
 
-    /// Shows the panel at `height`. A window's origin is its bottom-left, so
-    /// holding the origin while the height changes makes the panel grow upward
-    /// — which is what a surface anchored to the bottom-right of the screen
-    /// should do. An already-visible panel keeps where the user dragged it; a
-    /// hidden one comes back at its saved position.
-    func show(height: Double = CardLayout.cardHeight) {
+    /// Matches the face's. The card hangs off it, so one arriving abruptly
+    /// while the other eases in reads as a glitch rather than two windows.
+    private static let fade: TimeInterval = 0.22
+    private var wantsVisible = false
+
+    private var prefersReducedMotion: Bool {
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+
+    /// Shows the card panel, hung off the face.
+    ///
+    /// The panel has no position of its own any more: it belongs to the face
+    /// and follows it. Letting it be dragged separately meant it would snap
+    /// back the next time it opened, which reads as a bug rather than a rule.
+    func show(height: Double) {
+        wantsVisible = true
         let panel = panel ?? makePanel()
         self.panel = panel
+        lastHeight = height
 
-        let size = NSSize(width: CardLayout.width, height: height)
-        let origin = panel.isVisible ? panel.frame.origin : savedOrigin(for: size, on: panel)
-        panel.setFrame(NSRect(origin: origin, size: size), display: true)
-
-        // Re-clamp after resizing: growing upward can push the top edge off the
-        // screen even from a position that was legal at the smaller height.
-        if let visible = (panel.screen ?? NSScreen.main)?.visibleFrame {
-            panel.setFrameOrigin(Self.clamp(panel.frame.origin, size: size, into: visible))
-        }
+        let wasHidden = !panel.isVisible
+        panel.setFrame(NSRect(origin: origin(forHeight: height),
+                              size: NSSize(width: CardLayout.width, height: height)),
+                       display: true)
+        if wasHidden { panel.alphaValue = prefersReducedMotion ? 1 : 0 }
         panel.orderFrontRegardless()
+
+        guard !prefersReducedMotion else { panel.alphaValue = 1; return }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Self.fade
+            panel.animator().alphaValue = 1
+        }
     }
 
     func hide() {
-        panel?.orderOut(nil)
+        wantsVisible = false
+        guard let panel, panel.isVisible else { return }
+        guard !prefersReducedMotion else { panel.orderOut(nil); return }
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = Self.fade
+            panel.animator().alphaValue = 0
+        }, completionHandler: {
+            Task { @MainActor [weak self] in
+                // Shown again while it was fading: leave it be.
+                guard let self, !self.wantsVisible else { return }
+                self.panel?.orderOut(nil)
+            }
+        })
+    }
+
+    var isVisible: Bool { panel?.isVisible ?? false }
+
+    /// Called when the face moves, so an open card travels with it.
+    func reposition() {
+        guard let panel, panel.isVisible, let height = lastHeight else { return }
+        panel.setFrameOrigin(origin(forHeight: height))
+    }
+
+    private var lastHeight: Double?
+
+    private func origin(forHeight height: Double) -> CGPoint {
+        let size = CGSize(width: CardLayout.width, height: height)
+        let screen = (panel?.screen ?? NSScreen.main)?.visibleFrame ?? .zero
+        guard let face = FaceWindowController.shared.frame else {
+            // No face to attach to: the old bottom-right corner.
+            return CGPoint(x: screen.maxX - size.width - 24, y: screen.minY + 24)
+        }
+        return CardLayout.attachedOrigin(
+            faceFrame: face, cardSize: size, visibleFrame: screen)
     }
 
     private func makePanel() -> NSPanel {
@@ -50,7 +95,6 @@ final class CardWindowController: NSObject, NSWindowDelegate {
         panel.isFloatingPanel = true
         panel.level = .floating
         panel.hidesOnDeactivate = false
-        panel.isMovableByWindowBackground = true
         panel.backgroundColor = .clear
         panel.isOpaque = false
         panel.hasShadow = true
@@ -63,40 +107,6 @@ final class CardWindowController: NSObject, NSWindowDelegate {
         host.frame = NSRect(origin: .zero, size: Self.size)
         panel.contentView = host
 
-        // Persist wherever the user drags it. Done through the delegate rather
-        // than a NotificationCenter observer: the delegate is already
-        // main-actor isolated, so no non-Sendable notification has to cross an
-        // isolation boundary, and there is no observer to unregister.
-        panel.delegate = self
         return panel
-    }
-
-    func windowDidMove(_ notification: Notification) {
-        guard let panel else { return }
-        let origin = panel.frame.origin
-        UserDefaults.standard.set([origin.x, origin.y], forKey: Self.originKey)
-    }
-
-    /// The position the user last dragged the panel to, or the default
-    /// bottom-right slot on first run.
-    private func savedOrigin(for size: NSSize, on panel: NSPanel) -> CGPoint {
-        if let saved = UserDefaults.standard.array(forKey: Self.originKey) as? [CGFloat],
-           saved.count == 2 {
-            return CGPoint(x: saved[0], y: saved[1])
-        }
-        guard let visible = (panel.screen ?? NSScreen.main)?.visibleFrame else { return .zero }
-        return CGPoint(x: visible.maxX - size.width - 24, y: visible.minY + 24)
-    }
-
-    /// Clamps a bottom-left origin so a window of `size` sits fully inside
-    /// `visible`. If the window is larger than the visible area on an axis, it
-    /// pins to that axis's minimum edge. Pure, so it is unit-testable.
-    static func clamp(_ origin: CGPoint, size: NSSize, into visible: NSRect) -> CGPoint {
-        let maxX = max(visible.minX, visible.maxX - size.width)
-        let maxY = max(visible.minY, visible.maxY - size.height)
-        return CGPoint(
-            x: min(max(origin.x, visible.minX), maxX),
-            y: min(max(origin.y, visible.minY), maxY)
-        )
     }
 }

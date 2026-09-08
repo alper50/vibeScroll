@@ -92,41 +92,10 @@ public enum TaskRunway {
         case hold(Hold)
     }
 
-    /// Window identifiers that mean "the rolling few-hour allowance".
-    static let sessionKinds: Set<String> = ["session", "five_hour"]
-    /// …and the weekly ones. Per-model weekly pools are included so that a plan
-    /// which reports them is gated on whichever is tightest, rather than on a
-    /// combined figure that hides the one about to run out.
-    static let weeklyKinds: Set<String> = [
-        "weekly_all", "seven_day", "weekly_opus", "seven_day_opus",
-        "weekly_sonnet", "seven_day_sonnet",
-    ]
-
-    /// Nominal length of a window. The endpoint reports when a window *ends*
-    /// but never when it began, so this is the one piece the pace calculation
-    /// cannot read and has to know. An unrecognised kind returns `nil` and is
-    /// skipped rather than guessed — a wrong duration would silently distort
-    /// every pace decision made from it.
-    static func duration(forKind kind: String) -> TimeInterval? {
-        if sessionKinds.contains(kind) { return 5 * 3600 }
-        if weeklyKinds.contains(kind) { return 7 * 24 * 3600 }
-        return nil
-    }
-
-    /// How far through its window we are, 0...1, or `nil` when the window has
-    /// no reset time or an unknown length.
-    static func elapsedFraction(_ window: QuotaWindow, now: Date) -> Double? {
-        guard let resetsAt = window.resetsAt,
-              let duration = duration(forKind: window.kind), duration > 0
-        else { return nil }
-        let remaining = resetsAt.timeIntervalSince(now)
-        return min(max(1 - remaining / duration, 0), 1)
-    }
-
-    /// The tightest window of a group — the one that will actually stop you.
-    static func tightest(_ windows: [QuotaWindow], in kinds: Set<String>) -> QuotaWindow? {
-        windows.filter { kinds.contains($0.kind) }.max { $0.percentUsed < $1.percentUsed }
-    }
+    /// Window kinds and the pace arithmetic live in `QuotaPace`: the face asks
+    /// the same questions of the same numbers, and two copies would drift.
+    static let sessionKinds = QuotaPace.sessionKinds
+    static let weeklyKinds = QuotaPace.weeklyKinds
 
     /// Gates are ordered so the reason a person sees is the most useful one:
     /// what the queue itself is doing, then what the quota says, and only then
@@ -157,7 +126,7 @@ public enum TaskRunway {
         let age = now.timeIntervalSince(snapshot.checkedAt)
         guard age <= policy.snapshotMaxAge else { return .hold(.quotaStale(age: age)) }
 
-        if let session = tightest(snapshot.windows, in: sessionKinds),
+        if let session = QuotaPace.tightest(snapshot.windows, in: sessionKinds),
            session.percentUsed >= policy.sessionCeiling {
             return .hold(.sessionWindowSpent(percent: session.percentUsed))
         }
@@ -166,7 +135,7 @@ public enum TaskRunway {
         // the week is not available, so nothing runs. Failing closed here is
         // deliberate: the cost of holding is a queue that waits, and the cost of
         // proceeding is a week of quota spent unsupervised.
-        guard let weekly = tightest(snapshot.windows, in: weeklyKinds) else {
+        guard let weekly = QuotaPace.tightest(snapshot.windows, in: weeklyKinds) else {
             return .hold(.quotaUnavailable)
         }
 
@@ -176,7 +145,7 @@ public enum TaskRunway {
             return .hold(.weeklyReserve(percent: weekly.percentUsed, reserve: policy.weeklyReserve))
         }
 
-        if let elapsed = elapsedFraction(weekly, now: now) {
+        if let elapsed = QuotaPace.elapsedFraction(weekly, now: now) {
             let used = Double(weekly.percentUsed) / 100
             guard used <= elapsed - policy.paceMargin else {
                 return .hold(.aheadOfPace(

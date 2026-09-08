@@ -84,6 +84,7 @@ struct GeneralSettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            FaceSection()
             SoundsSection()
             QuotaSection()
         }
@@ -158,6 +159,24 @@ struct SetupChecklist: View {
             if let jump, !done {
                 Button("Open") { tab = jump }.font(.caption)
             }
+        }
+    }
+}
+
+/// The face's one setting.
+struct FaceSection: View {
+    @ObservedObject private var cards = CardController.shared
+
+    var body: some View {
+        Section {
+            Toggle("Keep the face on screen when nothing is running",
+                   isOn: $cards.showsFaceWhenIdle)
+        } header: {
+            Text("Face")
+        } footer: {
+            Text("The face shows what your agents are doing, how the week's quota is going, and how long you have been at it. Asleep it still says something \u{2014} that vibeScroll is running and nothing else is.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 }

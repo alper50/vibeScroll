@@ -30,6 +30,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // No-op unless the user turned the quota probe on: it reaches a
         // provider and touches the Keychain, so it stays opt-in.
         UsageProbe.shared.start()
+        FaceModel.shared.start()
+        CardController.shared.start()
         // A task still marked `running` is left over from a crash or a force
         // quit; its process is long gone, and leaving the row would block the
         // queue forever.

@@ -45,7 +45,7 @@ Two rules the whole design follows:
 | --- | --- |
 | `Sources/VibeScrollCore/` | Pure logic: event decoding, state machine, category resolution, pacing. No AppKit, fully tested. |
 | `Sources/App/` | The macOS app: daemon, menu bar, card panel, settings — plus the `hook` and `run` CLI roles. |
-| `Tests/` | 202 tests over the core. |
+| `Tests/` | 236 tests over the core. |
 
 The teaching content is served by a separate repository,
 [vibeScroll-backend](../vibeScroll-backend). The two are coupled only by an
@@ -207,6 +207,62 @@ git, so nothing about it is Claude-specific.
 **Not automatic yet.** Tasks run when you press *Run now*. The gate above is
 computed and displayed but nothing acts on it — the mechanism is worth proving
 with a person pressing the button before it is trusted to start work at 03:00.
+
+## The face
+
+A small face lives in its own window on the desktop, and the card panel hangs
+off it when there is a card. Two windows because the two have opposite
+lifetimes: the face is continuous and the card is occasional. Sharing one meant
+the card's size dictated the face's, and dismissing either had to argue about
+the other.
+
+The face grows while the pointer is over it, and shows a session-count badge
+there. The *window* never resizes — only the blob inside it does. Resizing the
+window is the obvious approach and it flickers: shrinking moves the frame out
+from under the pointer, which ends the hover, which grows it again. Holding the
+frame at the larger size means the hover target only ever gains area, so there
+is nothing to oscillate.
+
+By default it stays out even when nothing is running, asleep — which is still
+information: vibeScroll is up and no agent is. Settings turns that off, in
+which case the face arrives with the first session and leaves with the last.
+
+It is drawn on a circle of the system's own material rather than bare on the
+wallpaper. The face is five thin strokes in the accent colour; on a wallpaper
+near that colour it would simply disappear, and the material handles light and
+dark for free.
+
+It exists because the card pool is finite and the signals worth showing are not.
+Four things drive it, and none of them is visible anywhere else:
+
+| Signal | Read from | What it does |
+| --- | --- | --- |
+| Agent state | `AgentState` | Sets the resting face. `waiting` is the most alert one — being noticed is the point of that state. |
+| Weekly pace | `QuotaPace.overspend` | Spending ahead of the clock furrows the brow. 85% spent is alarming on Tuesday and fine on Sunday night, so the percentage alone is not the signal. |
+| Thrash | `topicSince` | An agent circling one topic for forty minutes. Only `working` sessions count: a session parked in `waiting` has held its topic for as long as *you* took to answer. |
+| Fatigue | `createdAt`, `TranscriptAPIError` | Session length and recent rate limits, whichever is worse. Three limits in an hour shows immediately rather than waiting for the clock. |
+
+The expression is five numbers — brow angle, eye openness, mouth curve, strain,
+energy — rather than a named mood. Named moods have to be resolved against each
+other the moment two signals disagree, and every answer is arbitrary: a face
+that is both tired and over budget is neither "tired" nor "worried". Numbers
+add, so it lands between them, and the drawing interpolates instead of cutting.
+Pressures accumulate freely and are clamped once at the end, so the order they
+are applied in cannot matter.
+
+An unmeasured budget is neutral, not alarmed. `TaskRunway` refuses to launch
+without a quota reading because the risk there is spending unsupervised; here
+the only risk is a wrong face, and looking worried about a budget nobody
+measured would be a lie.
+
+Everything is drawn with SwiftUI shapes — no sprite, no asset, no licence. That
+is deliberate: AgentPet's pet gallery was left behind partly over exactly that
+question. Blinking is skipped entirely under Reduce Motion rather than slowed,
+the same call `TypewriterReveal` makes about its reveal.
+
+`vibescroll face` opens a window for tuning it: sliders for the five numbers,
+and ten scenarios that run real input through the real pipeline, so what appears
+there is what the desktop would show.
 
 ## Content
 

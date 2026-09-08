@@ -1,43 +1,43 @@
 import SwiftUI
 import VibeScrollCore
 
-/// The floating panel's content. Two modes share one window: the teaching card,
-/// and the list of every live agent session.
+/// The card panel's content: a teaching card, or the list of every live agent
+/// session. The face used to sit on top of this; it has its own window now, so
+/// this panel is back to being occasional — it appears with a card and leaves
+/// with it.
 struct InfoCardView: View {
     @ObservedObject private var controller = CardController.shared
     @StateObject private var typewriter = TypewriterModel()
 
     var body: some View {
-        Group {
-            switch controller.mode {
-            case .card:
-                if let card = controller.current {
-                    // A fresh identity per card re-fires `onAppear`, which is how
-                    // the typewriter restarts. `.onChange(of:)` changed signature
-                    // in macOS 14; this works on 13 and 14 alike.
-                    cardBody(card).id(card.id)
-                } else {
-                    Color.clear
-                }
-            case .sessions:
-                sessionsBody
-            }
-        }
-        .frame(width: CardLayout.width, height: height, alignment: .topLeading)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.regularMaterial)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        content
+            .frame(width: CardLayout.width,
+                   height: CardLayout.panelHeight(for: controller.panelContent),
+                   alignment: .topLeading)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.regularMaterial)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    private var height: Double {
-        switch controller.mode {
-        case .card: return CardLayout.cardHeight
-        case .sessions: return CardLayout.sessionsHeight(forCount: controller.sessions.count)
+    @ViewBuilder
+    private var content: some View {
+        switch controller.panelContent {
+        case .none:
+            EmptyView()
+        case .card:
+            if let card = controller.current {
+                // A fresh identity per card re-fires `onAppear`, which is how
+                // the typewriter restarts. `.onChange(of:)` changed signature
+                // in macOS 14; this works on 13 and 14 alike.
+                cardBody(card).id(card.id)
+            }
+        case .sessions:
+            sessionsBody
         }
     }
 
@@ -89,33 +89,8 @@ struct InfoCardView: View {
 
             Spacer()
 
-            sessionsToggle
-            iconButton("xmark", help: "Dismiss") { controller.dismiss() }
+            iconButton("xmark", help: "Dismiss card") { controller.dismissCard() }
         }
-    }
-
-    /// Opens the session list. Carries the live count so the panel doubles as an
-    /// at-a-glance indicator without being opened.
-    private var sessionsToggle: some View {
-        Button {
-            controller.showSessions()
-        } label: {
-            HStack(spacing: 3) {
-                Image(systemName: "list.bullet")
-                    .font(.system(size: 9, weight: .bold))
-                if !controller.sessions.isEmpty {
-                    Text("\(controller.sessions.count)")
-                        .font(.system(size: 9, weight: .bold))
-                        .monospacedDigit()
-                }
-            }
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 5)
-            .padding(.vertical, 3)
-            .background(Capsule().fill(Color.primary.opacity(0.06)))
-        }
-        .buttonStyle(.plain)
-        .help("Show all sessions")
     }
 
     @ViewBuilder
@@ -180,7 +155,7 @@ struct InfoCardView: View {
                 if controller.current != nil {
                     iconButton("chevron.left", help: "Back to card") { controller.showCard() }
                 }
-                iconButton("xmark", help: "Dismiss") { controller.dismiss() }
+                    iconButton("xmark", help: "Close") { controller.dismissCard() }
             }
 
             if controller.sessions.isEmpty {

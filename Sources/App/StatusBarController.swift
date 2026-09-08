@@ -74,6 +74,12 @@ final class StatusBarController {
         toggle.target = self
         menu.addItem(toggle)
 
+        // The panel is ambient rather than dismissible-forever: hiding it is a
+        // pause, and the next agent to start brings it back.
+        let panel = NSMenuItem(title: "Hide panel", action: #selector(togglePanel), keyEquivalent: "")
+        panel.target = self
+        menu.addItem(panel)
+
         let settings = NSMenuItem(title: "Settings\u{2026}",
                                   action: #selector(openSettings), keyEquivalent: ",")
         settings.target = self
@@ -90,6 +96,8 @@ final class StatusBarController {
     @objc private func clearSessions() { AppDaemon.shared.clearSessions() }
 
     @objc private func openSessions() { CardController.shared.openSessions() }
+
+    @objc private func togglePanel() { CardController.shared.togglePanel() }
 
     @objc private func toggleCards() {
         CardController.shared.enabled.toggle()

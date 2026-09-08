@@ -25,4 +25,63 @@ final class CardLayoutTests: XCTestCase {
     func testNegativeCountIsTreatedAsOne() {
         XCTAssertEqual(CardLayout.sessionsHeight(forCount: -3), CardLayout.minSessionsHeight)
     }
+
+    // MARK: - Panel composition
+
+    func testAnEmptyPanelHasNoHeight() {
+        // The face is its own window now, so a dismissed card leaves nothing
+        // for this one to show.
+        XCTAssertEqual(CardLayout.panelHeight(for: .none), 0)
+        XCTAssertEqual(CardLayout.panelHeight(for: .card), CardLayout.cardHeight)
+        XCTAssertEqual(CardLayout.panelHeight(for: .sessions(count: 3)),
+                       CardLayout.sessionsHeight(forCount: 3))
+    }
+
+    func testTheFaceWindowHoldsItsLargestStateAndTheLabel() {
+        // Fixed at the largest it ever draws, so the pointer target only ever
+        // grows — resizing the window instead makes hover oscillate. The label
+        // slot is always reserved so the blob cannot move when it appears.
+        XCTAssertGreaterThan(CardLayout.faceHoverSize, CardLayout.faceRestingSize)
+        XCTAssertEqual(CardLayout.faceWindowHeight,
+                       CardLayout.faceHoverSize + 4 + CardLayout.faceLabelHeight)
+        XCTAssertGreaterThan(CardLayout.faceWindowWidth, CardLayout.faceHoverSize,
+                             "the label is a sentence and needs more room than the blob")
+    }
+
+    // MARK: - Attaching the card to the face
+
+    private let screen = CGRect(x: 0, y: 0, width: 1440, height: 900)
+    private var cardSize: CGSize { CGSize(width: CardLayout.width, height: CardLayout.cardHeight) }
+
+    func testTheCardHangsBelowTheFaceAndCentresOnIt() {
+        let face = CGRect(x: 700, y: 500, width: 148, height: 148)
+        let origin = CardLayout.attachedOrigin(
+            faceFrame: face, cardSize: cardSize, visibleFrame: screen)
+        XCTAssertEqual(origin.y, 500 - 10 - CardLayout.cardHeight)
+        XCTAssertEqual(origin.x, face.midX - CardLayout.width / 2)
+    }
+
+    func testTheCardGoesAboveWhenThereIsNoRoomBelow() {
+        // A face parked at the bottom of the screen is the common case: that is
+        // where the panel opens by default.
+        let face = CGRect(x: 700, y: 24, width: 148, height: 148)
+        let origin = CardLayout.attachedOrigin(
+            faceFrame: face, cardSize: cardSize, visibleFrame: screen)
+        XCTAssertEqual(origin.y, face.maxY + 10)
+    }
+
+    func testTheCardIsNeverPushedOffScreen() {
+        // A card placed off-screen looks exactly like one that never appeared.
+        for x in [-400.0, 1400.0] {
+            let face = CGRect(x: x, y: 400, width: 148, height: 148)
+            let origin = CardLayout.attachedOrigin(
+                faceFrame: face, cardSize: cardSize, visibleFrame: screen)
+            XCTAssertGreaterThanOrEqual(origin.x, screen.minX)
+            XCTAssertLessThanOrEqual(origin.x + CardLayout.width, screen.maxX)
+        }
+        let tall = CGRect(x: 700, y: 880, width: 148, height: 148)
+        let origin = CardLayout.attachedOrigin(
+            faceFrame: tall, cardSize: cardSize, visibleFrame: screen)
+        XCTAssertLessThanOrEqual(origin.y + CardLayout.cardHeight, screen.maxY)
+    }
 }

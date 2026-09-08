@@ -40,11 +40,30 @@ final class CardController: ObservableObject {
     @Published var enabled: Bool = (UserDefaults.standard.object(forKey: enabledKey) as? Bool) ?? true {
         didSet {
             UserDefaults.standard.set(enabled, forKey: Self.enabledKey)
-            if !enabled { dismiss() } else { scheduler.reset() }
+            // Cards off, face unaffected: they are separate features that
+            // happen to share a window.
+            if !enabled { dismissCard() } else { scheduler.reset() }
         }
     }
 
     private static let enabledKey = "vibescroll.cardsEnabled"
+
+    /// Whether the face stays out when nothing is running.
+    ///
+    /// On by default. The face asleep is still telling you something — that
+    /// vibeScroll is running and no agent is — and an app whose only surface
+    /// appears once you have already started working is hard to trust is
+    /// working at all.
+    @Published var showsFaceWhenIdle: Bool =
+        (UserDefaults.standard.object(forKey: faceWhenIdleKey) as? Bool) ?? true
+    {
+        didSet {
+            UserDefaults.standard.set(showsFaceWhenIdle, forKey: Self.faceWhenIdleKey)
+            syncPanel()
+        }
+    }
+
+    private static let faceWhenIdleKey = "vibescroll.showFaceWhenIdle"
 
     private let scheduler = CardScheduler()
 
@@ -61,13 +80,18 @@ final class CardController: ObservableObject {
         // Recorded before any gate: the sessions list must stay live even when
         // cards are paused, the user is browsing, or the list itself is open.
         let previousCount = self.sessions.count
+        let wasEmpty = self.sessions.isEmpty
         self.sessions = sessions
-        // Only resize when the row count actually changed — the daemon refreshes
-        // several times a second and resizing a window on every tick would make
-        // the panel visibly jitter.
-        if mode == .sessions, sessions.count != previousCount {
-            CardWindowController.shared.show(
-                height: CardLayout.sessionsHeight(forCount: sessions.count))
+        // A first session brings the panel back after everything went quiet;
+        // the last one leaving takes it away again.
+        if wasEmpty != sessions.isEmpty {
+            if !sessions.isEmpty { suppressed = false }
+            syncPanel()
+        } else if mode == .sessions, sessions.count != previousCount {
+            // Otherwise only resize when the row count actually changed: the
+            // daemon refreshes several times a second and resizing on every
+            // tick would make the panel visibly jitter.
+            syncPanel()
         }
 
         guard enabled, !isBrowsing, mode == .card else { return }
@@ -122,15 +146,15 @@ final class CardController: ObservableObject {
     /// the same reason browsing does: the user is looking at something.
     func showSessions() {
         mode = .sessions
-        CardWindowController.shared.show(height: CardLayout.sessionsHeight(forCount: sessions.count))
+        suppressed = false
+        syncPanel()
     }
 
     /// Back to the card. If nothing was showing (the list was opened from an
     /// empty panel) there is nothing to go back to, so close instead.
     func showCard() {
         mode = .card
-        guard current != nil else { dismiss(); return }
-        CardWindowController.shared.show(height: CardLayout.cardHeight)
+        syncPanel()
     }
 
     /// Opens the list from outside the panel (the menu bar), showing it even
@@ -140,23 +164,102 @@ final class CardController: ObservableObject {
         showSessions()
     }
 
+    /// Menu bar toggle: away if it is up, back if it is not.
+    func togglePanel() {
+        if suppressed || FaceWindowController.shared.frame == nil {
+            suppressed = false
+            syncPanel()
+        } else {
+            hidePanel()
+        }
+    }
+
     func focus(_ session: AgentSession) {
         SessionFocus.focus(session)
     }
 
-    func dismiss() {
+    /// Closes the card and leaves the face behind.
+    ///
+    /// The close button used to mean "close the panel", which was the same
+    /// thing when the panel was only ever a card. With an always-on face it no
+    /// longer is: dismissing what you have read should not also take away the
+    /// status you were glancing at.
+    func dismissCard() {
         current = nil
         context = []
         activeTopic = nil
         isBrowsing = false
         mode = .card
+        syncPanel()
+    }
+
+    /// Puts the whole panel away until something happens. The menu bar's escape
+    /// hatch, and what an empty session store does on its own.
+    /// Puts both windows away.
+    func hidePanel() {
+        current = nil
+        context = []
+        activeTopic = nil
+        isBrowsing = false
+        mode = .card
+        suppressed = true
         CardWindowController.shared.hide()
+        FaceWindowController.shared.setVisible(false)
+    }
+
+    /// Set by `hidePanel`, cleared the moment anything new happens. A panel
+    /// dismissed by hand should stay away, but not for ever: the next agent to
+    /// start is a new reason to be on screen.
+    private var suppressed = false
+
+    // MARK: - Panel state
+
+    /// What sits under the face right now.
+    var panelContent: CardLayout.PanelContent {
+        switch mode {
+        case .sessions: return .sessions(count: sessions.count)
+        case .card:     return current == nil ? .none : .card
+        }
+    }
+
+    /// Whether the face belongs on screen right now.
+    private var shouldShowFace: Bool {
+        guard !suppressed else { return false }
+        return showsFaceWhenIdle || !sessions.isEmpty || current != nil
+    }
+
+    /// The single place either window is shown or hidden.
+    ///
+    /// Two windows with opposite lifetimes: the face is the ambient layer and
+    /// is up whenever there is an agent to watch, while the card is occasional
+    /// and only up when it has something in it.
+    private func syncPanel() {
+        FaceWindowController.shared.setVisible(shouldShowFace)
+
+        // The card is occasional whatever the face is doing: it appears when it
+        // has something in it and leaves when it does not.
+        guard !suppressed, panelContent != .none else {
+            CardWindowController.shared.hide()
+            return
+        }
+        CardWindowController.shared.show(height: CardLayout.panelHeight(for: panelContent))
+    }
+
+    /// Puts the face on screen at launch.
+    ///
+    /// `consider` only syncs when the session list crosses between empty and
+    /// not, which never happens on a quiet machine — so without this the face
+    /// would wait for the first agent even when it is meant to be resting in
+    /// plain sight.
+    func start() {
+        syncPanel()
     }
 
     private func present(_ card: InfoCard, context: [AgentSession]) {
         current = card
         self.context = context
         mode = .card
-        CardWindowController.shared.show(height: CardLayout.cardHeight)
+        suppressed = false
+        syncPanel()
     }
 }

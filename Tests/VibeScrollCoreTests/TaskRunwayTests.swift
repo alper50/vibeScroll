@@ -236,20 +236,4 @@ final class TaskRunwayTests: XCTestCase {
         XCTAssertEqual(decide(queue: q, policy: policy),
                        .hold(.dailyLimitReached(started: 3, limit: 3)))
     }
-
-    // MARK: - Window arithmetic
-
-    func testElapsedFractionIsClampedAndKindAware() {
-        let weekly = window("weekly_all", 0, resetsIn: 84 * hour)
-        XCTAssertEqual(TaskRunway.elapsedFraction(weekly, now: now)!, 0.5, accuracy: 0.001)
-
-        // Already past its reset, and further out than its own length: both are
-        // clamped rather than producing a fraction outside 0...1.
-        XCTAssertEqual(TaskRunway.elapsedFraction(window("weekly_all", 0, resetsIn: -1), now: now), 1)
-        XCTAssertEqual(TaskRunway.elapsedFraction(window("session", 0, resetsIn: 99 * hour), now: now), 0)
-
-        // An unknown window kind is skipped, never guessed: a wrong duration
-        // would silently distort every pace decision made from it.
-        XCTAssertNil(TaskRunway.elapsedFraction(window("monthly_mystery", 0, resetsIn: hour), now: now))
-    }
 }

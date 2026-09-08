@@ -1,0 +1,73 @@
+import AppKit
+import SwiftUI
+import VibeScrollCore
+
+/// Plays a reaction over the mood.
+///
+/// Lives beside `BlinkModel` and for the same reason: a reaction is not a
+/// change of mood, so routing it through the published expression would
+/// republish the mood to say something the mood is not saying. Both are read
+/// inside `AnimatedFace`, which is what keeps the material circle out of every
+/// frame — that isolation was measured at 0.85% of a core.
+@MainActor
+final class ReactionModel: ObservableObject {
+    static let shared = ReactionModel()
+
+    @Published private(set) var impulse: FaceImpulse?
+    /// 0 at rest, 1 at the peak.
+    @Published private(set) var strength: Double = 0
+
+    private var pending: [DispatchWorkItem] = []
+
+    private var prefersReducedMotion: Bool {
+        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+
+    /// Reacts to a state change, if it is one worth reacting to.
+    ///
+    /// Only transitions, never the state itself: a session that is already
+    /// waiting when the app launches has not just started waiting, and a face
+    /// that startles at everything it finds is a face nobody reads.
+    func note(transition before: AgentState?, to after: AgentState) {
+        guard before != after else { return }
+        switch after {
+        case .waiting: fire(.noticed)
+        case .done:    fire(.pleased)
+        default:       break
+        }
+    }
+
+    func noteRateLimit() { fire(.winced) }
+
+    func fire(_ reaction: FaceReaction) {
+        guard !prefersReducedMotion else { return }
+        // A new reaction replaces whatever was playing rather than queueing.
+        // Two agents finishing together is one event to a person watching.
+        cancelPending()
+
+        let impulse = reaction.impulse
+        self.impulse = impulse
+
+        withAnimation(.easeOut(duration: impulse.rise)) { strength = 1 }
+        schedule(after: impulse.rise + impulse.hold) { [weak self] in
+            withAnimation(.easeInOut(duration: impulse.fall)) { self?.strength = 0 }
+        }
+        // Cleared only once the fade has finished, so the expression it was
+        // being added to stays put until there is nothing left to add.
+        schedule(after: impulse.total + 0.05) { [weak self] in
+            guard let self, self.strength == 0 else { return }
+            self.impulse = nil
+        }
+    }
+
+    private func schedule(after delay: TimeInterval, _ work: @escaping @MainActor () -> Void) {
+        let item = DispatchWorkItem { MainActor.assumeIsolated { work() } }
+        pending.append(item)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
+    }
+
+    private func cancelPending() {
+        pending.forEach { $0.cancel() }
+        pending.removeAll()
+    }
+}

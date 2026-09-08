@@ -166,6 +166,10 @@ final class AppDaemon: ObservableObject {
             title: "\(project) hit a rate limit",
             body: "The agent gave up after exhausting its retries.")
         SoundSettings.shared.play(.quota)
+        // The face carries the pattern a dismissed notification cannot: three
+        // of these in an hour is a different day from one.
+        FaceModel.shared.noteRateLimit()
+        ReactionModel.shared.noteRateLimit()
     }
 
     private func feedCodexUsage(for event: AgentEvent) {
@@ -265,6 +269,11 @@ final class AppDaemon: ObservableObject {
 
     private func notifyIfNeeded(before: AgentState?, session: AgentSession) {
         guard session.state != before else { return }
+        // Before the queue-owned check below: a queued task's own session is
+        // still worth a flicker on the face even when it is not worth a
+        // notification, because the face is where you look, not what you
+        // dismiss.
+        ReactionModel.shared.note(transition: before, to: session.state)
         // A queued task announces its own outcome, and does it better: the
         // runner knows whether the run hit a rate limit, timed out or simply
         // failed, none of which a state transition can tell apart. Alerting
@@ -294,6 +303,7 @@ final class AppDaemon: ObservableObject {
     private func refresh() {
         sessions = store.sorted
         StatusBarController.shared.updateStatus(sessions)
+        FaceModel.shared.update(sessions: sessions)
         CardController.shared.consider(sessions: sessions)
     }
 }
