@@ -16,6 +16,10 @@ final class CardController: ObservableObject {
     /// Sessions that justified the current card, for the card's context line.
     @Published private(set) var context: [AgentSession] = []
 
+    /// A remark about something that just happened, laid over whatever card
+    /// was showing. Clears itself; the card underneath comes back.
+    @Published private(set) var moment: Moment?
+
     /// Set once the user presses Next, cleared when they dismiss.
     ///
     /// Pressing Next is an explicit "I am reading this". While it is set, an
@@ -42,7 +46,10 @@ final class CardController: ObservableObject {
             UserDefaults.standard.set(enabled, forKey: Self.enabledKey)
             // Cards off, face unaffected: they are separate features that
             // happen to share a window.
-            if !enabled { dismissCard() } else { scheduler.reset() }
+            // The gate is reset alongside the scheduler: a session that
+            // started while cards were off should not count against the first
+            // moment after they come back.
+            if !enabled { dismissCard() } else { scheduler.reset(); momentGate.reset() }
         }
     }
 
@@ -63,9 +70,30 @@ final class CardController: ObservableObject {
         }
     }
 
+    /// Whether the eyes follow the pointer while it is over the face.
+    ///
+    /// On by default, and cheap to leave on: it is driven by mouse-move events
+    /// and does nothing at all when nothing is over the face. Off is still
+    /// worth offering — a face that watches the cursor is charming to some
+    /// people and distracting to others, and that is not a judgement the app
+    /// gets to make for anyone.
+    @Published var followsPointer: Bool =
+        (UserDefaults.standard.object(forKey: followsPointerKey) as? Bool) ?? true
+    {
+        didSet {
+            UserDefaults.standard.set(followsPointer, forKey: Self.followsPointerKey)
+            // Turning it off with the pointer already on the face would
+            // otherwise leave the eyes stuck where they last looked.
+            if !followsPointer { GazeModel.shared.rest() }
+        }
+    }
+
     private static let faceWhenIdleKey = "vibescroll.showFaceWhenIdle"
+    private static let followsPointerKey = "vibescroll.faceFollowsPointer"
 
     private let scheduler = CardScheduler()
+    private var momentGate = MomentGate()
+    private var momentExpiry: DispatchWorkItem?
 
     /// Applies a pacing policy (Settings exposes a "calm / normal / eager" preset).
     func apply(policy: CardScheduler.Policy) {
@@ -95,6 +123,7 @@ final class CardController: ObservableObject {
         }
 
         guard enabled, !isBrowsing, mode == .card else { return }
+        raiseMilestones(sessions, now: now)
         guard let topic = CategoryResolver.aggregate(sessions) else { return }
         // `aggregate` already picked the session; find it again for the dwell
         // clock and the context line.
@@ -138,6 +167,52 @@ final class CardController: ObservableObject {
     func preview(_ card: InfoCard) {
         activeTopic = card.category
         present(card, context: [])
+    }
+
+    /// Thresholds worth remarking on. Both are floored to a whole step so the
+    /// key is stable — the gate rate-limits per key, and a key that changed
+    /// every second would defeat it.
+    private func raiseMilestones(_ sessions: [AgentSession], now: Date) {
+        let live = sessions.filter { $0.state == .working || $0.state == .waiting }
+        if live.count >= 3 {
+            raise(.crowd(count: live.count), now: now)
+        }
+        if let oldest = sessions.map(\.createdAt).min() {
+            let hours = Int(now.timeIntervalSince(oldest) / 3600)
+            if hours >= 3 { raise(.longHaul(hours: hours), now: now) }
+        }
+    }
+
+    // MARK: - Moments
+
+    /// Shows a moment, if the gate lets it through.
+    ///
+    /// Answers to the same switches a card does — off means off, and somebody
+    /// reading a card they asked for should not have it covered. The session
+    /// list is left alone for the same reason: it is a thing being used.
+    @discardableResult
+    func raise(_ moment: Moment, now: Date = Date()) -> Bool {
+        guard enabled, !isBrowsing, mode == .card else { return false }
+        guard momentGate.admit(moment, now: now) else { return false }
+
+        self.moment = moment
+        // Like a card: something worth saying is a reason to be back on screen.
+        suppressed = false
+        syncPanel()
+
+        momentExpiry?.cancel()
+        let work = DispatchWorkItem { MainActor.assumeIsolated { self.clearMoment() } }
+        momentExpiry = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + momentGate.policy.dwell, execute: work)
+        return true
+    }
+
+    private func clearMoment() {
+        guard moment != nil else { return }
+        moment = nil
+        // Straight back to whatever was underneath, which `syncPanel` works
+        // out on its own — a card, or nothing at all.
+        syncPanel()
     }
 
     // MARK: - Modes
@@ -198,6 +273,8 @@ final class CardController: ObservableObject {
     func dismissCard() {
         current = nil
         context = []
+        momentExpiry?.cancel()
+        moment = nil
         activeTopic = nil
         isBrowsing = false
         mode = .card
@@ -210,6 +287,8 @@ final class CardController: ObservableObject {
     func hidePanel() {
         current = nil
         context = []
+        momentExpiry?.cancel()
+        moment = nil
         activeTopic = nil
         isBrowsing = false
         mode = .card
@@ -229,7 +308,10 @@ final class CardController: ObservableObject {
     var panelContent: CardLayout.PanelContent {
         switch mode {
         case .sessions: return .sessions(count: sessions.count)
-        case .card:     return current == nil ? .none : .card
+        // The moment wins while it is up. It is the only content here with an
+        // expiry, so the card it covers is still there when it goes.
+        case .card:     return moment != nil ? .moment
+                            : (current == nil ? .none : .card)
         }
     }
 
@@ -264,6 +346,20 @@ final class CardController: ObservableObject {
     /// plain sight.
     func start() {
         syncPanel()
+        greetOnFirstRun()
+    }
+
+    private static let welcomedKey = "vibescroll.welcomed"
+
+    /// Once ever, and not on the same turn as the window appearing — the face
+    /// is still fading in, and a card unfolding out of something that is not
+    /// there yet has nothing to unfold from.
+    private func greetOnFirstRun() {
+        guard !UserDefaults.standard.bool(forKey: Self.welcomedKey) else { return }
+        UserDefaults.standard.set(true, forKey: Self.welcomedKey)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            MainActor.assumeIsolated { _ = CardController.shared.raise(.welcome) }
+        }
     }
 
     private func present(_ card: InfoCard, context: [AgentSession]) {

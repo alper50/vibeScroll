@@ -163,7 +163,7 @@ struct SetupChecklist: View {
     }
 }
 
-/// The face's one setting.
+/// The face's settings.
 struct FaceSection: View {
     @ObservedObject private var cards = CardController.shared
 
@@ -171,10 +171,12 @@ struct FaceSection: View {
         Section {
             Toggle("Keep the face on screen when nothing is running",
                    isOn: $cards.showsFaceWhenIdle)
+            Toggle("Follow the pointer with its eyes",
+                   isOn: $cards.followsPointer)
         } header: {
             Text("Face")
         } footer: {
-            Text("The face shows what your agents are doing, how the week's quota is going, and how long you have been at it. Asleep it still says something \u{2014} that vibeScroll is running and nothing else is.")
+            Text("The face shows what your agents are doing, how the week's quota is going, and how long you have been at it. Asleep it still says something \u{2014} that vibeScroll is running and nothing else is. The eyes only follow while the pointer is over the face, and cost nothing the rest of the time.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

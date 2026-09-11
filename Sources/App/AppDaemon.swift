@@ -170,6 +170,7 @@ final class AppDaemon: ObservableObject {
         // of these in an hour is a different day from one.
         FaceModel.shared.noteRateLimit()
         ReactionModel.shared.noteRateLimit()
+        CardController.shared.raise(.rateLimited(count: FaceModel.shared.rateLimitsThisHour))
     }
 
     private func feedCodexUsage(for event: AgentEvent) {
@@ -274,6 +275,23 @@ final class AppDaemon: ObservableObject {
         // notification, because the face is where you look, not what you
         // dismiss.
         ReactionModel.shared.note(transition: before, to: session.state)
+        // Alongside the face, and gated the same way: the reaction is the
+        // flicker, the moment is the sentence. `before == nil` is the only
+        // honest reading of "started" — a session already `working` when the
+        // app launched did not start just now.
+        switch session.state {
+        case .working where before == nil || before == .registered:
+            CardController.shared.raise(
+                .sessionStarted(agent: session.agentKind, project: session.project))
+        case .waiting:
+            CardController.shared.raise(
+                .waitingOnYou(agent: session.agentKind, project: session.project))
+        case .done:
+            CardController.shared.raise(
+                .turnFinished(agent: session.agentKind, project: session.project))
+        default:
+            break
+        }
         // A queued task announces its own outcome, and does it better: the
         // runner knows whether the run hit a rate limit, timed out or simply
         // failed, none of which a state transition can tell apart. Alerting

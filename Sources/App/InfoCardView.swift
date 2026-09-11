@@ -45,9 +45,39 @@ struct InfoCardView: View {
                 // in macOS 14; this works on 13 and 14 alike.
                 cardBody(card).id(card.id)
             }
+        case .moment:
+            if let moment = controller.moment {
+                momentBody(moment)
+            }
         case .sessions:
             sessionsBody
         }
+    }
+
+    // MARK: - Moment mode
+
+    /// Two lines and nothing around them.
+    ///
+    /// No category strip, no level, no footer: every one of those says
+    /// something about a teaching card that is not true of a remark about
+    /// right now. No typewriter either — the reveal is what makes a card feel
+    /// worth reading, and a moment that took two seconds to type would have
+    /// been quicker to just say.
+    @ViewBuilder
+    private func momentBody(_ moment: Moment) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(moment.title)
+                .font(.system(size: 14, weight: .semibold))
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(moment.detail)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
     }
 
     // MARK: - Card mode

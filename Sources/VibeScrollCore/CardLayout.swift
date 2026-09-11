@@ -74,8 +74,15 @@ public enum CardLayout {
     public enum PanelContent: Equatable, Sendable {
         case none
         case card
+        case moment
         case sessions(count: Int)
     }
+
+    /// A moment is two short lines and nothing else — no category strip, no
+    /// footer, no "read more". Giving it the teaching card's height would leave
+    /// most of the panel empty and make a one-line remark look like an
+    /// announcement.
+    public static let momentHeight: Double = 92
 
     /// Height of the card panel. `none` is zero because there is nothing left
     /// to show once the card is gone — the face is a separate window now and
@@ -84,6 +91,7 @@ public enum CardLayout {
         switch content {
         case .none:               return 0
         case .card:               return cardHeight
+        case .moment:             return momentHeight
         case .sessions(let rows): return sessionsHeight(forCount: rows)
         }
     }

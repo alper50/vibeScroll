@@ -58,7 +58,12 @@ struct FaceWindowView: View {
         ZStack {
             orb
 
-            AnimatedFace(blink: blink, reaction: reaction, expression: face.expression)
+            // `GazeModel.shared` is handed over rather than observed here.
+            // A pointer crossing the circle publishes on every mouse-move
+            // event, and this body draws the material orb; observing it up
+            // here would re-blur that orb all the way across.
+            AnimatedFace(blink: blink, reaction: reaction, gaze: GazeModel.shared,
+                         expression: face.expression)
                 .padding(CardLayout.faceRestingSize * 0.16)
         }
         // Every dimension inside is fixed; only the transform moves.
@@ -68,6 +73,21 @@ struct FaceWindowView: View {
         .contentShape(Circle())
         .scaleEffect(scale)
         .onHover { hovering = $0 }
+        // Separate from `onHover` above: that one drives the growth and only
+        // needs to know in or out, while this one needs the position. Reported
+        // against the resting size because the hover scale is a transform and
+        // does not change the coordinate space underneath it.
+        .onContinuousHover(coordinateSpace: .local) { phase in
+            switch phase {
+            case .active(let point):
+                GazeModel.shared.look(
+                    at: point,
+                    in: CGSize(width: CardLayout.faceRestingSize,
+                               height: CardLayout.faceRestingSize))
+            case .ended:
+                GazeModel.shared.rest()
+            }
+        }
         .gesture(clickOrDrag)
         .help("Click to show or hide all sessions, drag to move")
         .animation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.72),
@@ -193,6 +213,7 @@ struct FaceWindowView: View {
 private struct AnimatedFace: View {
     @ObservedObject var blink: BlinkModel
     @ObservedObject var reaction: ReactionModel
+    @ObservedObject var gaze: GazeModel
     var expression: FaceExpression
 
     // A slow breathing scale was tried here and measured at 10.7% of a core —
@@ -202,7 +223,7 @@ private struct AnimatedFace: View {
     // face is still instead, and free.
 
     var body: some View {
-        FaceView(expression: reacted, blink: blink.amount)
+        FaceView(expression: reacted, blink: blink.amount, gaze: gaze.direction)
     }
 
     private var reacted: FaceExpression {

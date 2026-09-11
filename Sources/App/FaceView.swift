@@ -17,6 +17,9 @@ struct FaceView: View {
     /// 0 open … 1 fully shut. Kept out of the expression because a blink is not
     /// a change of mood; it multiplies into the lids at drawing time.
     var blink: Double = 0
+    /// Where the eyes are pointed, -1…1 on each axis. Out of the expression for
+    /// the same reason as the blink: looking at the pointer is not a mood.
+    var gaze: CGSize = .zero
 
     /// Design canvas. Everything is expressed against this and scaled once, so
     /// the same face works in a 110pt strip and in the preview at 3×.
@@ -58,15 +61,38 @@ struct FaceView: View {
     private static let eyeCentreY: CGFloat = -5
     private static let eyeWidth: CGFloat = 16
     private static let eyeHeight: CGFloat = 22
+    /// How far a full look moves the eyes, in design points. Small on purpose:
+    /// with no iris to slide, the whole shape travels, and a shape that moves
+    /// far stops reading as an eye looking and starts reading as an eye coming
+    /// loose from the face.
+    private static let gazeRangeX: CGFloat = 2.6
+    private static let gazeRangeY: CGFloat = 1.8
 
     /// The frame is fixed and the shape draws inside it, rather than the frame
     /// shrinking as the eye closes. Nothing is re-laid-out on a blink, and the
     /// corners stay put — an eye whose corners move is a shape changing size,
     /// not a lid coming down.
     private func eye(side: CGFloat) -> some View {
-        EyeShape(openness: expression.eyeOpenness * (1 - min(max(blink, 0), 1)))
-            .frame(width: Self.eyeWidth, height: Self.eyeHeight)
-            .offset(x: side * Self.eyeOffsetX, y: Self.eyeCentreY)
+        // `side` is +1 on the right of the face, and that eye's inner corner —
+        // the one by the nose — is on the left of its own rect.
+        let openness = expression.eyeOpenness * (1 - min(max(blink, 0), 1))
+        let shape = EyeShape(openness: openness, innerLeading: side > 0)
+
+        return ZStack {
+            shape
+            // Punched out rather than painted on: the hole shows the orb
+            // behind, so the highlight is whatever the material is doing at
+            // that moment and the face stays a single colour. `destinationOut`
+            // rather than an even-odd hole because it cannot misfire — a
+            // highlight that strays past the lid removes nothing instead of
+            // drawing a stray crescent outside the eye.
+            EyeCatchlightShape(openness: openness, innerLeading: side > 0)
+                .blendMode(.destinationOut)
+        }
+        .compositingGroup()
+        .frame(width: Self.eyeWidth, height: Self.eyeHeight)
+        .offset(x: side * Self.eyeOffsetX + gaze.width * Self.gazeRangeX,
+                y: Self.eyeCentreY + gaze.height * Self.gazeRangeY)
     }
 
     // MARK: - Brows
@@ -129,15 +155,37 @@ struct FaceView: View {
 /// travels much further than its lower one — so the two arcs are given
 /// different depths, and closing moves mostly the top. Shrinking both equally
 /// looks like an aperture rather than a blink.
+///
+/// Nothing here is symmetrical either, which is the rest of what made the first
+/// version read as a graphic rather than an eye. Three asymmetries, all small:
+/// the corner nearest the nose sits lower than the one by the temple, the upper
+/// lid's high point is pulled toward the nose, and the lower lid's dip is
+/// pushed away from it. Individually invisible; together they are the
+/// difference between an eye and a lens.
 struct EyeShape: Shape {
     var openness: Double
+    /// True when the corner nearest the nose is on the left of this shape's own
+    /// rect — so the right eye of the face. `BrowShape` is handed its side the
+    /// same way, and for the same reason: mirroring with a transform would
+    /// flip everything applied outside along with it.
+    var innerLeading: Bool
 
     var animatableData: Double {
         get { openness }
         set { openness = newValue }
     }
 
-    func path(in rect: CGRect) -> Path {
+    /// The geometry both the outline and the catchlight are built from, so the
+    /// highlight cannot drift off the shape it is supposed to be sitting on.
+    struct Lids {
+        var left: CGPoint
+        var right: CGPoint
+        var upperControl: CGPoint
+        var lowerControl: CGPoint
+        var middle: CGFloat
+    }
+
+    static func lids(in rect: CGRect, openness: Double, innerLeading: Bool) -> Lids {
         let open = min(max(openness, 0), 1)
         let middle = rect.midY
         // Deep enough that a fully open eye is taller than it is wide. The
@@ -150,14 +198,116 @@ struct EyeShape: Shape {
         // loses half its features every time it blinks.
         let closed = rect.height * 0.055
 
+        // The tear duct sits lower than the outer corner. Scaled by how open
+        // the eye is so that a blink closes to a level line rather than to a
+        // slope, which would read as a wink.
+        let tilt = rect.height * 0.030 * open
+        let leftY = middle + (innerLeading ? tilt : -tilt)
+        let rightY = middle + (innerLeading ? -tilt : tilt)
+
+        // Peak toward the nose, dip away from it. Both are expressed against
+        // the rect's own left edge rather than against the inner corner, so
+        // there is one coordinate system here and no mirrored reasoning.
+        func x(fromNose t: CGFloat) -> CGFloat {
+            rect.minX + rect.width * (innerLeading ? t : 1 - t)
+        }
+
+        return Lids(
+            left: CGPoint(x: rect.minX, y: leftY),
+            right: CGPoint(x: rect.maxX, y: rightY),
+            upperControl: CGPoint(x: x(fromNose: 0.46), y: middle - upper - closed),
+            lowerControl: CGPoint(x: x(fromNose: 0.54), y: middle + lower + closed),
+            middle: middle)
+    }
+
+    /// Where the catchlight goes, in the eye's own coordinates. `nil` when the
+    /// eye is too nearly shut to hold one.
+    ///
+    /// Upper left on *both* eyes rather than mirrored, because the orb behind
+    /// the face is lit from the upper left too. Two eyes with symmetrical
+    /// highlights are two eyes lit by two lamps, which is the look of a
+    /// diagram; one lamp is what makes a face read as being in a room.
+    static func catchlight(in rect: CGRect, openness: Double, innerLeading: Bool) -> CGRect? {
+        let lids = lids(in: rect, openness: openness, innerLeading: innerLeading)
+        // Anchored to a place on screen, not to a position along the curve.
+        // Taking it at a fixed curve parameter put it in a different spot on
+        // each eye, because the two curves are mirrored — which is two lamps
+        // again, by accident.
+        let target = rect.minX + rect.width * 0.30
+        let lid = nearestOnUpperLid(toX: target, lids: lids)
+        let gap = lids.middle - lid.y
+        guard gap > 0 else { return nil }
+
+        // Sized and placed against that gap rather than against the rect, so
+        // it shrinks with the lid on the way into a blink instead of having to
+        // be switched off at some threshold.
+        let radius = min(gap * 0.20, rect.width * 0.12)
+        guard radius > 0.35 else { return nil }
+        let centre = CGPoint(x: lid.x, y: lid.y + gap * 0.55)
+        return CGRect(x: centre.x - radius, y: centre.y - radius,
+                      width: radius * 2, height: radius * 2)
+    }
+
+    /// The point on the upper lid closest to a given x.
+    ///
+    /// Sampled rather than solved. The curve's x is a quadratic in t and
+    /// inverting it is a page of algebra plus the branch where the eye is shut
+    /// and the quadratic degenerates; twenty-four samples of an arc a few
+    /// points long are accurate past what any of this is drawn at.
+    private static func nearestOnUpperLid(toX target: CGFloat, lids: Lids) -> CGPoint {
+        let steps = 24
+        var best = lids.left
+        var bestDistance = CGFloat.greatestFiniteMagnitude
+        for step in 0...steps {
+            let point = quadPoint(CGFloat(step) / CGFloat(steps),
+                                  lids.left, lids.upperControl, lids.right)
+            let distance = abs(point.x - target)
+            if distance < bestDistance {
+                bestDistance = distance
+                best = point
+            }
+        }
+        return best
+    }
+
+    private static func quadPoint(_ t: CGFloat, _ p0: CGPoint, _ c: CGPoint,
+                                  _ p1: CGPoint) -> CGPoint {
+        let u = 1 - t
+        return CGPoint(x: u * u * p0.x + 2 * u * t * c.x + t * t * p1.x,
+                       y: u * u * p0.y + 2 * u * t * c.y + t * t * p1.y)
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let lids = Self.lids(in: rect, openness: openness, innerLeading: innerLeading)
         var path = Path()
-        let inner = CGPoint(x: rect.minX, y: middle)
-        let outer = CGPoint(x: rect.maxX, y: middle)
-        path.move(to: inner)
-        path.addQuadCurve(to: outer, control: CGPoint(x: rect.midX, y: middle - upper - closed))
-        path.addQuadCurve(to: inner, control: CGPoint(x: rect.midX, y: middle + lower + closed))
+        path.move(to: lids.left)
+        path.addQuadCurve(to: lids.right, control: lids.upperControl)
+        path.addQuadCurve(to: lids.left, control: lids.lowerControl)
         path.closeSubpath()
         return path
+    }
+}
+
+/// The catchlight, as a shape rather than a circle positioned by the view.
+///
+/// It has to be a `Shape` so that it carries `openness` as `animatableData`
+/// like the lid does. Computed in a view body instead, it would be sized once
+/// per re-render while the lid interpolated past it — the highlight sitting
+/// still at full size through a blink, then disappearing.
+struct EyeCatchlightShape: Shape {
+    var openness: Double
+    var innerLeading: Bool
+
+    var animatableData: Double {
+        get { openness }
+        set { openness = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        guard let spot = EyeShape.catchlight(in: rect, openness: openness,
+                                             innerLeading: innerLeading)
+        else { return Path() }
+        return Path(ellipseIn: spot)
     }
 }
 

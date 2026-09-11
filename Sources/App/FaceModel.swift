@@ -60,6 +60,14 @@ final class FaceModel: ObservableObject {
         recompute()
     }
 
+    /// How many rate limits are still inside the window. The moment card says
+    /// the count, and this is the one place that keeps it — the same list the
+    /// face's own fatigue reads.
+    var rateLimitsThisHour: Int {
+        let now = Date()
+        return rateLimits.filter { now.timeIntervalSince($0) <= policy.rateLimitWindow }.count
+    }
+
     /// Tokens burned per minute across everything running.
     ///
     /// A session that is pruned takes its tokens with it, so the running total

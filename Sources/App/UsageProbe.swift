@@ -71,9 +71,27 @@ final class UsageProbe: ObservableObject {
         }
     }
 
+    /// When the five-hour window we last saw was due to roll over. A window
+    /// whose reset time has moved past the one we remember is a new window.
+    private var lastSessionReset: Date?
+
+    /// Edge-triggered, like the exhausted sound above: the point is the moment
+    /// the window rolls over, which is the moment there is quota to spend
+    /// again. Silent on the first reading — a window seen once is not a window
+    /// that just renewed, and saying so at launch would be a lie every time.
+    private func noteWindowRollover(in snapshot: QuotaSnapshot) {
+        guard let window = QuotaPace.tightest(snapshot.windows, in: QuotaPace.sessionKinds),
+              let resetsAt = window.resetsAt
+        else { return }
+        defer { lastSessionReset = resetsAt }
+        guard let previous = lastSessionReset, resetsAt > previous else { return }
+        CardController.shared.raise(.windowRenewed)
+    }
+
     private func apply(_ result: Result<QuotaSnapshot, ProbeError>) {
         switch result {
         case .success(let snapshot):
+            noteWindowRollover(in: snapshot)
             self.snapshot = snapshot
             lastError = nil
             // Edge-triggered: the sound marks the moment you run out, not the
