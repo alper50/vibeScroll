@@ -157,6 +157,17 @@ final class CardController: ObservableObject {
         syncPanel()
     }
 
+    /// What a click on the face does: bring the session list up, or put it
+    /// away again. `showCard` is the right way back — with a card underneath
+    /// it returns to that, and with nothing underneath the panel closes, which
+    /// is what "away" means when there was never anything else there.
+    ///
+    /// `suppressed` needs no test here: it hides the face too, so there is no
+    /// face to click while it is set.
+    func toggleSessions() {
+        mode == .sessions ? showCard() : showSessions()
+    }
+
     /// Opens the list from outside the panel (the menu bar), showing it even
     /// when no card is on screen.
     func openSessions() {

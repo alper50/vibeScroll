@@ -15,6 +15,13 @@ struct FaceWindowView: View {
     @ObservedObject private var reaction = ReactionModel.shared
     @ObservedObject private var presentation = FaceWindowController.shared.presentation
     @State private var hovering = false
+    /// Distinguishes a click from a drag. A `DragGesture` reports cumulative
+    /// translation, so the last one is kept to move by the difference rather
+    /// than by the total each time.
+    @State private var dragging = false
+    /// Whether the pointer is currently down on the face. The grab offset the
+    /// drag works from is taken once, on the first event of the press.
+    @State private var grabbed = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Both growths are one transform.
@@ -38,7 +45,7 @@ struct FaceWindowView: View {
         // the stack collapse when it is hidden would move the blob every time
         // the pointer arrives, which is the one thing a hover must not do.
         VStack(spacing: 4) {
-            blob.frame(width: CardLayout.faceHoverSize, height: CardLayout.faceHoverSize)
+            blob.frame(width: CardLayout.faceSlot, height: CardLayout.faceSlot)
             hoverRow.frame(height: CardLayout.faceLabelHeight)
         }
         .frame(width: CardLayout.faceWindowWidth, height: CardLayout.faceWindowHeight,
@@ -49,9 +56,7 @@ struct FaceWindowView: View {
 
     private var blob: some View {
         ZStack {
-            Circle()
-                .fill(.regularMaterial)
-                .overlay(Circle().strokeBorder(Color.primary.opacity(0.08), lineWidth: 1))
+            orb
 
             AnimatedFace(blink: blink, reaction: reaction, expression: face.expression)
                 .padding(CardLayout.faceRestingSize * 0.16)
@@ -63,6 +68,8 @@ struct FaceWindowView: View {
         .contentShape(Circle())
         .scaleEffect(scale)
         .onHover { hovering = $0 }
+        .gesture(clickOrDrag)
+        .help("Click to show or hide all sessions, drag to move")
         .animation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.72),
                    value: hovering)
         .animation(reduceMotion ? nil : .spring(response: 0.36, dampingFraction: 0.68),
@@ -70,28 +77,96 @@ struct FaceWindowView: View {
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.8), value: face.expression)
     }
 
-    /// What the face is reacting to, and the way into the session list.
+    /// The material disc, lit like a sphere.
     ///
-    /// Both live here rather than floating over the blob: one hover affordance
-    /// is easier to find than two, and text over a face is unreadable.
+    /// Flat it read as a sticker. The depth is entirely lighting — a highlight
+    /// up and left, shade falling away to the lower right, and a rim that is
+    /// bright on top and dark underneath. No gloss and no bevel: the point is
+    /// for it to stop looking cut out, not to look like a button.
+    ///
+    /// White and black at low opacity rather than semantic colours, because
+    /// this is light rather than content: the same overlay reads correctly on
+    /// a light material and a dark one, which a hand-picked pair would not.
+    ///
+    /// All of it is static. Gradients are composited once and cached; the
+    /// breathing animation that cost 10.7% of a core was expensive because it
+    /// never stopped, not because it was drawing.
+    private var orb: some View {
+        let size = CardLayout.faceRestingSize
+        return Circle()
+            .fill(.regularMaterial)
+            .overlay {
+                Circle().fill(
+                    RadialGradient(
+                        colors: [Color.white.opacity(0.20),
+                                 Color.white.opacity(0.04),
+                                 Color.black.opacity(0.13)],
+                        center: UnitPoint(x: 0.33, y: 0.27),
+                        startRadius: 0,
+                        endRadius: size * 0.92))
+            }
+            .overlay(alignment: .topLeading) {
+                // The specular. A radial fill rather than a blurred ellipse:
+                // soft edges without paying for a filter pass.
+                Ellipse()
+                    .fill(RadialGradient(
+                        colors: [Color.white.opacity(0.34), Color.white.opacity(0)],
+                        center: .center, startRadius: 0, endRadius: size * 0.17))
+                    .frame(width: size * 0.42, height: size * 0.30)
+                    .offset(x: size * 0.13, y: size * 0.10)
+            }
+            .overlay {
+                Circle().strokeBorder(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.38), Color.black.opacity(0.12)],
+                        startPoint: .top, endPoint: .bottom),
+                    lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.18), radius: size * 0.07, y: size * 0.03)
+    }
+
+    /// Click opens the session list; a drag moves the window.
+    ///
+    /// Both are on the face itself. The list used to be reached through a
+    /// button under it, which could not be clicked: moving the pointer down to
+    /// the button left the circle, `hovering` went false, and the row vanished
+    /// before anyone got there. A control that only exists while you are not
+    /// looking at it is not a control.
+    ///
+    /// Three points of slack, so a click with a shaky hand is still a click.
+    /// The distance is measured on screen rather than from the gesture, which
+    /// reads near zero once the window starts following the pointer — see
+    /// `FaceWindowController.dragGrab`.
+    private var clickOrDrag: some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { _ in
+                if !grabbed {
+                    grabbed = true
+                    FaceWindowController.shared.beginDrag()
+                }
+                if !dragging, FaceWindowController.shared.dragDistance > 3 {
+                    dragging = true
+                }
+                if dragging { FaceWindowController.shared.dragToPointer() }
+            }
+            .onEnded { _ in
+                if dragging {
+                    FaceWindowController.shared.persistOrigin()
+                } else {
+                    ReactionModel.shared.noteClick()
+                    controller.toggleSessions()
+                }
+                dragging = false
+                grabbed = false
+            }
+    }
+
+    /// What the face is reacting to. Read while hovering the circle, so it
+    /// never has to be reached for.
     @ViewBuilder
     private var hoverRow: some View {
         if hovering {
             HStack(spacing: 6) {
-                if !controller.sessions.isEmpty {
-                    Button { controller.showSessions() } label: {
-                        HStack(spacing: 3) {
-                            Image(systemName: "list.bullet")
-                            Text("\(controller.sessions.count)").monospacedDigit()
-                        }
-                        .font(.system(size: 9, weight: .bold))
-                    }
-                    .buttonStyle(.plain)
-                    .help("Show all sessions")
-
-                    Text("\u{00B7}").foregroundStyle(.quaternary)
-                }
-
                 Text(face.reason.summary)
                     .font(.system(size: 10))
                     .lineLimit(1)
@@ -119,6 +194,12 @@ private struct AnimatedFace: View {
     @ObservedObject var blink: BlinkModel
     @ObservedObject var reaction: ReactionModel
     var expression: FaceExpression
+
+    // A slow breathing scale was tried here and measured at 10.7% of a core —
+    // twelve times the whole app. Any *continuous* animation sits on top of the
+    // material circle and re-blurs it on every frame, which is the same cost
+    // that made the blink expensive, except a breath never stops. A sleeping
+    // face is still instead, and free.
 
     var body: some View {
         FaceView(expression: reacted, blink: blink.amount)

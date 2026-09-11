@@ -43,7 +43,10 @@ final class CardLayoutTests: XCTestCase {
         // slot is always reserved so the blob cannot move when it appears.
         XCTAssertGreaterThan(CardLayout.faceHoverSize, CardLayout.faceRestingSize)
         XCTAssertEqual(CardLayout.faceWindowHeight,
-                       CardLayout.faceHoverSize + 4 + CardLayout.faceLabelHeight)
+                       CardLayout.faceSlot + 4 + CardLayout.faceLabelHeight)
+        // Room for the shadow and the growth, or the window's own corner shows
+        // through as a straight edge across a surface meant to be a circle.
+        XCTAssertGreaterThan(CardLayout.faceSlot, CardLayout.faceHoverSize)
         XCTAssertGreaterThan(CardLayout.faceWindowWidth, CardLayout.faceHoverSize,
                              "the label is a sentence and needs more room than the blob")
     }
@@ -53,21 +56,21 @@ final class CardLayoutTests: XCTestCase {
     private let screen = CGRect(x: 0, y: 0, width: 1440, height: 900)
     private var cardSize: CGSize { CGSize(width: CardLayout.width, height: CardLayout.cardHeight) }
 
-    func testTheCardHangsBelowTheFaceAndCentresOnIt() {
-        let face = CGRect(x: 700, y: 500, width: 148, height: 148)
-        let origin = CardLayout.attachedOrigin(
-            faceFrame: face, cardSize: cardSize, visibleFrame: screen)
-        XCTAssertEqual(origin.y, 500 - 10 - CardLayout.cardHeight)
-        XCTAssertEqual(origin.x, face.midX - CardLayout.width / 2)
-    }
-
-    func testTheCardGoesAboveWhenThereIsNoRoomBelow() {
-        // A face parked at the bottom of the screen is the common case: that is
-        // where the panel opens by default.
-        let face = CGRect(x: 700, y: 24, width: 148, height: 148)
+    func testTheCardGrowsOutOfTheTopOfTheFace() {
+        // Upward is the direction that reads as emerging, and it is also where
+        // the face usually has room: it opens low and most people leave it low.
+        let face = CGRect(x: 700, y: 120, width: 124, height: 150)
         let origin = CardLayout.attachedOrigin(
             faceFrame: face, cardSize: cardSize, visibleFrame: screen)
         XCTAssertEqual(origin.y, face.maxY + 10)
+        XCTAssertEqual(origin.x, face.midX - CardLayout.width / 2)
+    }
+
+    func testTheCardDropsBelowWhenTheFaceIsAgainstTheTop() {
+        let face = CGRect(x: 700, y: 700, width: 124, height: 150)
+        let origin = CardLayout.attachedOrigin(
+            faceFrame: face, cardSize: cardSize, visibleFrame: screen)
+        XCTAssertEqual(origin.y, face.minY - 10 - CardLayout.cardHeight)
     }
 
     func testTheCardIsNeverPushedOffScreen() {
@@ -79,7 +82,7 @@ final class CardLayoutTests: XCTestCase {
             XCTAssertGreaterThanOrEqual(origin.x, screen.minX)
             XCTAssertLessThanOrEqual(origin.x + CardLayout.width, screen.maxX)
         }
-        let tall = CGRect(x: 700, y: 880, width: 148, height: 148)
+        let tall = CGRect(x: 700, y: 880, width: 124, height: 150)
         let origin = CardLayout.attachedOrigin(
             faceFrame: tall, cardSize: cardSize, visibleFrame: screen)
         XCTAssertLessThanOrEqual(origin.y + CardLayout.cardHeight, screen.maxY)

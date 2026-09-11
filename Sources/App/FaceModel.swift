@@ -27,6 +27,15 @@ final class FaceModel: ObservableObject {
     private var rateLimits: [Date] = []
     private var timer: Timer?
 
+    /// Token totals over time, which is the only history this app keeps.
+    /// Nothing else needs a rate, and `SessionStore` deliberately forgets.
+    private var tokenSamples: [(at: Date, total: Int)] = []
+    private static let rateWindow: TimeInterval = 3 * 60
+    /// Samples no closer together than this. The daemon refreshes several times
+    /// a second and three minutes of that would be thousands of entries to say
+    /// what a dozen already say.
+    private static let sampleGap: TimeInterval = 10
+
     private let policy = FaceMood.Policy()
 
     func start() {
@@ -51,6 +60,25 @@ final class FaceModel: ObservableObject {
         recompute()
     }
 
+    /// Tokens burned per minute across everything running.
+    ///
+    /// A session that is pruned takes its tokens with it, so the running total
+    /// can fall. That is bookkeeping, not a negative burn rate, and the floor
+    /// below is what keeps a tidy-up from reading as the work stopping.
+    private func tokensPerMinute(now: Date) -> Double {
+        let total = sessions.compactMap(\.tokens).reduce(0, +)
+        if tokenSamples.last.map({ now.timeIntervalSince($0.at) >= Self.sampleGap }) ?? true {
+            tokenSamples.append((now, total))
+        }
+        tokenSamples.removeAll { now.timeIntervalSince($0.at) > Self.rateWindow }
+
+        guard let oldest = tokenSamples.first else { return 0 }
+        let elapsed = now.timeIntervalSince(oldest.at)
+        // Too short a baseline turns one ordinary turn into a spike.
+        guard elapsed >= 45 else { return 0 }
+        return Double(max(0, total - oldest.total)) / (elapsed / 60)
+    }
+
     private func recompute() {
         let now = Date()
         // Dropped here rather than in `FaceMood`, so the pure side stays a
@@ -58,8 +86,10 @@ final class FaceModel: ObservableObject {
         // history.
         rateLimits.removeAll { now.timeIntervalSince($0) > policy.rateLimitWindow }
 
-        let inputs = FaceInputs(sessions: sessions, quota: UsageProbe.shared.snapshot,
-                                rateLimits: rateLimits)
+        let inputs = FaceInputs(
+            sessions: sessions, quota: UsageProbe.shared.snapshot,
+            rateLimits: rateLimits,
+            tokensPerMinute: tokensPerMinute(now: now))
         let next = FaceMood.expression(for: inputs, policy: policy, now: now)
         if next != expression { expression = next }
 

@@ -54,6 +54,17 @@ final class BlinkModel: ObservableObject {
 
     private func blink() {
         guard !prefersReducedMotion else { return }
+
+        // Asleep: skip the blink but keep the timer, so the face wakes by
+        // itself. Stopping the schedule instead would need something to notice
+        // the energy coming back, and a timer firing every eight seconds to do
+        // nothing is cheaper than the machinery that would take.
+        guard !BlinkRhythm.sleeps(atEnergy: energy) else {
+            if amount != 0 { amount = 0 }
+            scheduleNext()
+            return
+        }
+
         let duration = BlinkRhythm.duration(energy: energy)
 
         withAnimation(.easeIn(duration: duration / 2)) { amount = 1 }

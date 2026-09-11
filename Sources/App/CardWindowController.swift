@@ -11,6 +11,10 @@ import VibeScrollCore
 final class CardWindowController: NSObject {
     static let shared = CardWindowController()
 
+    /// Drives the emergence inside the SwiftUI content, the same split the face
+    /// uses: the window's alpha carries the fade, this carries the growth.
+    let presentation = FacePresentation()
+
     private var panel: NSPanel?
     private static let size = NSSize(width: CardLayout.width, height: CardLayout.cardHeight)
 
@@ -38,10 +42,24 @@ final class CardWindowController: NSObject {
         panel.setFrame(NSRect(origin: origin(forHeight: height),
                               size: NSSize(width: CardLayout.width, height: height)),
                        display: true)
-        if wasHidden { panel.alphaValue = prefersReducedMotion ? 1 : 0 }
+        if wasHidden {
+            panel.alphaValue = prefersReducedMotion ? 1 : 0
+            presentation.shown = prefersReducedMotion
+        }
         panel.orderFrontRegardless()
 
-        guard !prefersReducedMotion else { panel.alphaValue = 1; return }
+        guard !prefersReducedMotion else {
+            panel.alphaValue = 1
+            presentation.shown = true
+            return
+        }
+        // One turn of the run loop before the growth starts, so SwiftUI has
+        // drawn the small state to animate away from.
+        if wasHidden {
+            Task { @MainActor [weak self] in self?.presentation.shown = true }
+        } else {
+            presentation.shown = true
+        }
         NSAnimationContext.runAnimationGroup { context in
             context.duration = Self.fade
             panel.animator().alphaValue = 1
@@ -50,6 +68,7 @@ final class CardWindowController: NSObject {
 
     func hide() {
         wantsVisible = false
+        presentation.shown = false
         guard let panel, panel.isVisible else { return }
         guard !prefersReducedMotion else { panel.orderOut(nil); return }
         NSAnimationContext.runAnimationGroup({ context in
@@ -66,7 +85,17 @@ final class CardWindowController: NSObject {
 
     var isVisible: Bool { panel?.isVisible ?? false }
 
-    /// Called when the face moves, so an open card travels with it.
+    /// Travels with the face during a drag. A plain translation: the card's
+    /// place relative to the face has not changed, so there is nothing to
+    /// work out again.
+    func move(byX dx: CGFloat, y dy: CGFloat) {
+        guard let panel, panel.isVisible else { return }
+        panel.setFrameOrigin(CGPoint(x: panel.frame.origin.x + dx,
+                                     y: panel.frame.origin.y + dy))
+    }
+
+    /// Recomputes where the card belongs. Used when it opens, not while the
+    /// face is being dragged.
     func reposition() {
         guard let panel, panel.isVisible, let height = lastHeight else { return }
         panel.setFrameOrigin(origin(forHeight: height))

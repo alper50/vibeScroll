@@ -12,7 +12,7 @@ import VibeScrollCore
 /// Non-activating, like the card panel — an ambient face that steals focus from
 /// the editor is worse than no face.
 @MainActor
-final class FaceWindowController: NSObject, NSWindowDelegate {
+final class FaceWindowController: NSObject {
     static let shared = FaceWindowController()
 
     /// Drives the entrance and exit inside the SwiftUI content. The window's
@@ -108,7 +108,10 @@ final class FaceWindowController: NSObject, NSWindowDelegate {
         panel.isFloatingPanel = true
         panel.level = .floating
         panel.hidesOnDeactivate = false
-        panel.isMovableByWindowBackground = true
+        // Dragging is handled in SwiftUI instead, so a click on the face can be
+        // told from a drag of it. Leaving this on meant AppKit consumed the
+        // mouse down before the view ever saw it.
+        panel.isMovableByWindowBackground = false
         panel.backgroundColor = .clear
         panel.isOpaque = false
         // No shadow: the window is mostly transparent, and AppKit would draw
@@ -120,17 +123,73 @@ final class FaceWindowController: NSObject, NSWindowDelegate {
         host.autoresizingMask = [.width, .height]
         host.frame = NSRect(origin: .zero, size: Self.size)
         panel.contentView = host
-        panel.delegate = self
         return panel
     }
 
-    func windowDidMove(_ notification: Notification) {
+    /// Nudges the window, in SwiftUI's coordinates: its y grows downward and a
+    /// window origin's grows up.
+    ///
+    /// The card is moved by the same delta rather than recomputing where it
+    /// belongs, and nothing is written to disk until the drag ends. Doing both
+    /// on every step — a settings write and a re-derived origin, per frame,
+    /// with two vibrancy windows to move — is what made dragging with the card
+    /// open feel like it was catching.
+    /// Where the pointer sat inside the window when the drag began, in screen
+    /// space. `nil` between drags.
+    ///
+    /// Dragging by the gesture's own `translation` does not work here, and this
+    /// is why: `translation` is measured against the view, and the view is
+    /// inside the window we are moving. Move the window a step and the view
+    /// travels with it, so the pointer has barely moved *relative to the view*
+    /// and the next translation comes back near zero. The window stalls, the
+    /// pointer runs ahead, the following event over-corrects, and the whole
+    /// thing judders and crawls away from the hand holding it.
+    ///
+    /// Screen coordinates have no such loop. Remember the grab offset once,
+    /// then put the window wherever the pointer is minus that offset. It is
+    /// absolute, so a dropped frame costs nothing — the next event lands the
+    /// window exactly where it belongs rather than one delta further along.
+    private var dragGrab: CGSize?
+
+    /// Mouse down on the face.
+    func beginDrag() {
+        guard let panel else { return }
+        let mouse = NSEvent.mouseLocation
+        dragGrab = CGSize(width: mouse.x - panel.frame.origin.x,
+                          height: mouse.y - panel.frame.origin.y)
+    }
+
+    /// How far the pointer has travelled since the grab. The view cannot work
+    /// this out for itself: while the window is following, the gesture's own
+    /// translation stays near zero however far the hand has gone.
+    var dragDistance: CGFloat {
+        guard let panel, let grab = dragGrab else { return 0 }
+        let mouse = NSEvent.mouseLocation
+        return hypot(mouse.x - grab.width - panel.frame.origin.x,
+                     mouse.y - grab.height - panel.frame.origin.y)
+    }
+
+    /// Puts the face back under the pointer, and takes the card with it.
+    func dragToPointer() {
+        guard let panel, let grab = dragGrab else { return }
+        let mouse = NSEvent.mouseLocation
+        let origin = CGPoint(x: mouse.x - grab.width, y: mouse.y - grab.height)
+        let delta = CGSize(width: origin.x - panel.frame.origin.x,
+                           height: origin.y - panel.frame.origin.y)
+        guard delta != .zero else { return }
+        panel.setFrameOrigin(origin)
+        // A plain translation, not a recomputed attachment point: the card is
+        // riding along, and re-deriving its corner every frame was the other
+        // half of what made this drag feel heavy.
+        CardWindowController.shared.move(byX: delta.width, y: delta.height)
+    }
+
+    /// Called when a drag finishes.
+    func persistOrigin() {
+        dragGrab = nil
         guard let panel else { return }
         let origin = panel.frame.origin
         UserDefaults.standard.set([origin.x, origin.y], forKey: Self.originKey)
-        // The card hangs off the face, so it has to travel with it rather than
-        // waiting to be reopened somewhere else.
-        CardWindowController.shared.reposition()
     }
 
     /// Where the user last left it, or the bottom-right corner on first run.

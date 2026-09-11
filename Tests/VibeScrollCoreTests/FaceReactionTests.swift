@@ -30,6 +30,27 @@ final class FaceReactionTests: XCTestCase {
             mood.applying(FaceReaction.pleased.impulse, strength: 1).mouthCurve, mood.mouthCurve)
     }
 
+    func testOnlyBeingAddressedOpensTheMouth() {
+        // The three reactions written before `mouthOpen` existed must be
+        // untouched by it, which is what the defaulted parameter is for.
+        let mood = FaceMood.base(for: .working)
+        for quiet in [FaceReaction.noticed, .pleased, .winced] {
+            XCTAssertEqual(mood.applying(quiet.impulse, strength: 1).mouthOpen, mood.mouthOpen,
+                           "\(quiet) should not open the mouth")
+        }
+        XCTAssertGreaterThan(
+            mood.applying(FaceReaction.greeted.impulse, strength: 1).mouthOpen, mood.mouthOpen)
+    }
+
+    func testAClickIsAnsweredFasterThanAMoodChanges() {
+        // A reply to a poke that takes as long as a mood change does not read
+        // as a reply to the poke.
+        let greeted = FaceReaction.greeted.impulse
+        for other in [FaceReaction.noticed, .pleased, .winced] {
+            XCTAssertLessThan(greeted.total, other.impulse.total)
+        }
+    }
+
     func testAReactionCannotPushTheFaceOutOfRange() {
         // A startle on an already wide-eyed face must not open the eyes past 1
         // and then come back down from somewhere the face was never at.
@@ -40,6 +61,8 @@ final class FaceReactionTests: XCTestCase {
                 XCTAssertTrue((0...1).contains(face.eyeOpenness))
                 XCTAssertTrue((-1...1).contains(face.browAngle))
                 XCTAssertTrue((-1...1).contains(face.mouthCurve))
+                XCTAssertTrue((0...1).contains(face.mouthOpen))
+                XCTAssertLessThanOrEqual(face.tongue, face.mouthOpen)
             }
         }
     }

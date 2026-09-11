@@ -39,6 +39,11 @@ final class ReactionModel: ObservableObject {
 
     func noteRateLimit() { fire(.winced) }
 
+    /// The face was clicked. Fires whichever way the session list is about to
+    /// go: opening it and putting it away are both somebody addressing the
+    /// face, and it should answer either way.
+    func noteClick() { fire(.greeted) }
+
     func fire(_ reaction: FaceReaction) {
         guard !prefersReducedMotion else { return }
         // A new reaction replaces whatever was playing rather than queueing.

@@ -7,7 +7,9 @@ import VibeScrollCore
 /// with it.
 struct InfoCardView: View {
     @ObservedObject private var controller = CardController.shared
+    @ObservedObject private var presentation = CardWindowController.shared.presentation
     @StateObject private var typewriter = TypewriterModel()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         content
@@ -22,6 +24,13 @@ struct InfoCardView: View {
                     .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
             )
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            // Anchored to the bottom edge, which is the one facing the face, so
+            // the card unfolds upward out of it rather than appearing whole.
+            // Scale alone does the travelling: an offset would push the content
+            // past the window's fixed frame and clip it on the way in.
+            .scaleEffect(presentation.shown ? 1 : 0.9, anchor: .bottom)
+            .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.78),
+                       value: presentation.shown)
     }
 
     @ViewBuilder

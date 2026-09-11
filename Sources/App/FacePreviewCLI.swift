@@ -99,6 +99,9 @@ private struct FacePreview: View {
                     slider("Mouth", $expression.mouthCurve, -1...1)
                     slider("Strain", $expression.strain, 0...1)
                     slider("Energy", $expression.energy, 0...1)
+                    slider("Brow skew", $expression.browSkew, -1...1)
+                    slider("Mouth open", $expression.mouthOpen, 0...1)
+                    slider("Tongue", $expression.tongue, 0...1)
                 } header: {
                     Text("Parameters")
                 } footer: {
@@ -132,10 +135,11 @@ private struct FacePreview: View {
     }
 
     private static func session(
-        _ state: AgentState, topicAge: TimeInterval = 0, sessionAge: TimeInterval = 0
+        _ state: AgentState, id: String = "preview",
+        topicAge: TimeInterval = 0, sessionAge: TimeInterval = 0
     ) -> (Date) -> AgentSession {
         { now in
-            AgentSession(id: "preview", agentKind: .claude, state: state, source: .hook,
+            AgentSession(id: id, agentKind: .claude, state: state, source: .hook,
                          updatedAt: now,
                          createdAt: now.addingTimeInterval(-sessionAge),
                          topicSince: now.addingTimeInterval(-topicAge))
@@ -147,6 +151,18 @@ private struct FacePreview: View {
             QuotaSnapshot(
                 provider: "claude", displayName: "Claude",
                 windows: [QuotaWindow(kind: "weekly_all", percentUsed: percent,
+                                      severity: .normal,
+                                      resetsAt: now.addingTimeInterval(resetsIn),
+                                      isActive: true)],
+                checkedAt: now)
+        }
+    }
+
+    private static func session5h(percent: Int, resetsIn: TimeInterval) -> (Date) -> QuotaSnapshot {
+        { now in
+            QuotaSnapshot(
+                provider: "claude", displayName: "Claude",
+                windows: [QuotaWindow(kind: "session", percentUsed: percent,
                                       severity: .normal,
                                       resetsAt: now.addingTimeInterval(resetsIn),
                                       isActive: true)],
@@ -176,10 +192,28 @@ private struct FacePreview: View {
                                     $0.addingTimeInterval(-900),
                                     $0.addingTimeInterval(-1800)])
         },
+        Scenario(name: "Four agents at once") { now in
+            FaceInputs(sessions: (0..<4).map { i in
+                AgentSession(id: "a\(i)", agentKind: .claude, state: .working,
+                             source: .hook, updatedAt: now, createdAt: now, topicSince: now)
+            })
+        },
+        Scenario(name: "Burning tokens fast") {
+            FaceInputs(sessions: [session(.working)($0)], tokensPerMinute: 4000)
+        },
+        Scenario(name: "One waiting while another works") { now in
+            FaceInputs(sessions: [session(.working, id: "a")(now),
+                                  session(.waiting, id: "b")(now)])
+        },
+        Scenario(name: "Five-hour window burned early") { now in
+            FaceInputs(sessions: [session(.working)(now)],
+                       quota: session5h(percent: 80, resetsIn: 3 * 3600)(now))
+        },
         Scenario(name: "All of it at once") { now in
             FaceInputs(sessions: [session(.working, topicAge: 3 * 3600, sessionAge: 12 * 3600)(now)],
                        quota: weekly(percent: 100, resetsIn: 160 * 3600)(now),
-                       rateLimits: (0..<5).map { now.addingTimeInterval(-Double($0) * 300) })
+                       rateLimits: (0..<5).map { now.addingTimeInterval(-Double($0) * 300) },
+                       tokensPerMinute: 5000)
         },
     ]
 }

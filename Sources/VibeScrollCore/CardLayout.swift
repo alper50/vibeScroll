@@ -10,9 +10,22 @@ public enum CardLayout {
     public static let width: Double = 340
 
     /// The face lives in its own window. Its blob is this wide at rest…
-    public static let faceRestingSize: Double = 104
-    /// …and this wide while the pointer is over it.
-    public static let faceHoverSize: Double = 148
+    public static let faceRestingSize: Double = 74
+    /// …and grows by this much under the pointer. A ratio rather than a second
+    /// size, so resizing the face keeps the step it was tuned to: the growth is
+    /// an acknowledgement that the pointer arrived, not an entrance.
+    public static let faceHoverGrowth: Double = 1.19
+    public static var faceHoverSize: Double { faceRestingSize * faceHoverGrowth }
+
+    /// Clear space around the blob inside its window.
+    ///
+    /// The orb casts a shadow and grows on hover; without room for both, the
+    /// shadow meets the window's edge and draws a straight line across it —
+    /// the window's own corner, showing through a surface that is supposed to
+    /// be a circle on the desktop.
+    public static let faceMargin: Double = 14
+    /// The square the blob is centred in, shadow and growth included.
+    public static var faceSlot: Double { faceHoverSize + faceMargin * 2 }
 
     /// Room under the blob for the hover label.
     public static let faceLabelHeight: Double = 26
@@ -28,7 +41,7 @@ public enum CardLayout {
     /// Wider than the blob because the label is a sentence. The margin is
     /// transparent and does not hit-test, so it costs nothing to carry.
     public static let faceWindowWidth: Double = 300
-    public static var faceWindowHeight: Double { faceHoverSize + 4 + faceLabelHeight }
+    public static var faceWindowHeight: Double { faceSlot + 4 + faceLabelHeight }
 
     /// Height in card mode. Fixed: a card's text is clamped to two title lines
     /// and five body lines, so it never needs more.
@@ -75,21 +88,23 @@ public enum CardLayout {
         }
     }
 
-    /// Where the card panel sits so it reads as belonging to the face.
+    /// Where the card panel sits so it reads as coming out of the face.
     ///
-    /// Below the face when there is room and above it when there is not, always
-    /// centred on it, always inside the screen. Pure arithmetic because the
-    /// failure is silent: a card placed off-screen looks exactly like a card
-    /// that never appeared.
+    /// Above it by preference, which is also where the face usually has room:
+    /// it opens in the bottom-right corner and most people leave it low. The
+    /// card then grows upward out of its top edge rather than dropping out from
+    /// underneath, which is the direction that reads as emerging.
+    ///
+    /// Pure arithmetic because the failure is silent: a card placed off-screen
+    /// looks exactly like a card that never appeared.
     public static func attachedOrigin(
         faceFrame: CGRect, cardSize: CGSize, visibleFrame: CGRect, gap: Double = 10
     ) -> CGPoint {
-        let below = faceFrame.minY - gap - cardSize.height
         let above = faceFrame.maxY + gap
-        // Below unless that would run off the bottom; above unless that would
-        // run off the top. If neither fits, the clamp below settles it.
-        var y = below >= visibleFrame.minY ? below : above
-        if y + cardSize.height > visibleFrame.maxY, below >= visibleFrame.minY { y = below }
+        let below = faceFrame.minY - gap - cardSize.height
+        // Above unless that would run off the top; below otherwise. If neither
+        // fits, the clamp settles it.
+        let y = above + cardSize.height <= visibleFrame.maxY ? above : below
 
         let x = faceFrame.midX - cardSize.width / 2
         return CGPoint(
