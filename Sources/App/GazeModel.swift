@@ -25,25 +25,55 @@ final class GazeModel: ObservableObject {
         NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
     }
 
-    /// `point` is in the face circle's own coordinates.
-    func look(at point: CGPoint, in size: CGSize) {
-        guard CardController.shared.followsPointer, !prefersReducedMotion else {
-            rest()
-            return
+    /// Follows the pointer for as long as it is over the face.
+    ///
+    /// A short timer reading `NSEvent.mouseLocation`, rather than SwiftUI's
+    /// `onContinuousHover`. That modifier depends on the window being told
+    /// about mouse-moved events, and this window is a non-activating accessory
+    /// panel that is essentially never the active app — whether hover
+    /// positions arrive there is not something to take on faith, and it could
+    /// not be verified here. `mouseLocation` is the same call the drag handler
+    /// already makes in this exact window, and that demonstrably works.
+    ///
+    /// Nothing runs while the pointer is elsewhere, so an idle face costs what
+    /// it always did. The interval is a rendering choice rather than a sampling
+    /// one: a tick redraws the two eye shapes, not the material behind them.
+    private static let interval: TimeInterval = 1.0 / 30
+
+    private var timer: Timer?
+
+    /// The pointer arrived.
+    func beginTracking() {
+        guard CardController.shared.followsPointer, !prefersReducedMotion else { return }
+        guard timer == nil else { return }
+        timer = Timer.scheduledTimer(withTimeInterval: Self.interval, repeats: true) { _ in
+            Task { @MainActor in GazeModel.shared.sample() }
         }
-        guard size.width > 0, size.height > 0 else { return }
-        // The pointer is over the circle, so the offset from the centre spans
-        // roughly one radius: at the centre the eyes look straight out, at the
-        // rim they look fully that way. No scaling factor needed.
-        let next = CGSize(width: clamp(point.x / size.width * 2 - 1),
-                          height: clamp(point.y / size.height * 2 - 1))
+        sample()
+    }
+
+    private func sample() {
+        guard let frame = FaceWindowController.shared.frame else { return }
+        // The blob is centred across the window and sits in the slot at its
+        // top, with the label taking the rest. Screen coordinates here, so the
+        // window's own y grows upward.
+        let centre = CGPoint(x: frame.midX, y: frame.maxY - CardLayout.faceSlot / 2)
+        let radius = CardLayout.faceRestingSize / 2
+        let mouse = NSEvent.mouseLocation
+
+        // Negated on y: this becomes a SwiftUI offset, where y grows down.
+        let next = CGSize(width: clamp((mouse.x - centre.x) / radius),
+                          height: clamp((centre.y - mouse.y) / radius))
         // Set without an animation: the eyes should be where the pointer is,
         // not easing toward where it was. The return in `rest` is the part
         // worth animating, because nothing is driving it any more.
         if next != direction { direction = next }
     }
 
+    /// The pointer left, or the setting went off.
     func rest() {
+        timer?.invalidate()
+        timer = nil
         guard direction != .zero else { return }
         withAnimation(prefersReducedMotion ? nil : .easeOut(duration: 0.25)) {
             direction = .zero

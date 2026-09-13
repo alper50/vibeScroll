@@ -15,13 +15,18 @@ public struct FaceInputs: Equatable, Sendable {
     /// Tokens per minute across everything running. Derived by the caller,
     /// which is the only part of the app that keeps enough history to know it.
     public var tokensPerMinute: Double
+    /// When the face was last touched. Counts as activity, so a face somebody
+    /// just clicked is awake whatever the agents are doing.
+    public var lastInteraction: Date?
 
     public init(sessions: [AgentSession] = [], quota: QuotaSnapshot? = nil,
-                rateLimits: [Date] = [], tokensPerMinute: Double = 0) {
+                rateLimits: [Date] = [], tokensPerMinute: Double = 0,
+                lastInteraction: Date? = nil) {
         self.sessions = sessions
         self.quota = quota
         self.rateLimits = rateLimits
         self.tokensPerMinute = tokensPerMinute
+        self.lastInteraction = lastInteraction
     }
 }
 
@@ -356,12 +361,39 @@ public enum FaceMood {
     /// silence `SessionStore.prune` had to learn to read — and a face that
     /// dozes off while a build runs has misread it in the same way.
     public static func drowsiness(
-        _ sessions: [AgentSession], policy: Policy = .init(), now: Date
+        _ sessions: [AgentSession], lastInteraction: Date? = nil,
+        policy: Policy = .init(), now: Date
     ) -> Double {
         guard !sessions.contains(where: { $0.state == .working }) else { return 0 }
-        guard let latest = sessions.map(\.updatedAt).max() else { return 1 }
-        return ramp(now.timeIntervalSince(latest),
+        // Being touched counts as something happening, exactly like an agent
+        // event does. Without this a click on a sleeping face could only ever
+        // be a reaction laid over a sleeping mood — the eyes cracked open for
+        // half a second and shut again, which reads as a twitch rather than as
+        // waking up. The cause is the mood, so the mood is what has to change.
+        let newest = [sessions.map(\.updatedAt).max(), lastInteraction]
+            .compactMap { $0 }
+            .max()
+        guard let newest else { return 1 }
+        return ramp(now.timeIntervalSince(newest),
                     from: policy.drowsyAfter, to: policy.asleepAfter)
+    }
+
+    /// How recently the face was touched, 1 down to 0.
+    ///
+    /// Suppressing `drowsiness` is not enough on its own to wake anything up.
+    /// With no sessions at all the resting face is already `base(for: nil)` —
+    /// eyes at 0.05, because nothing is happening — so a face that had merely
+    /// stopped being sleepy would still be sitting there with its eyes shut.
+    /// Something has to open them.
+    ///
+    /// Decays over exactly `drowsyAfter`, so it reaches zero at the moment
+    /// drowsiness starts to climb and the two hand over without a gap in which
+    /// the face is neither awake nor asleep.
+    public static func alertness(
+        lastInteraction: Date?, policy: Policy = .init(), now: Date
+    ) -> Double {
+        guard let lastInteraction else { return 0 }
+        return 1 - ramp(now.timeIntervalSince(lastInteraction), from: 0, to: policy.drowsyAfter)
     }
 
     // MARK: - Composition
@@ -419,13 +451,25 @@ public enum FaceMood {
         // above did to them. The brow is left where it was — a frown that
         // survives into sleep is closer to how a face actually rests than one
         // that smooths out the moment the eyes close.
-        let sleepy = drowsiness(inputs.sessions, policy: policy, now: now)
+        let sleepy = drowsiness(inputs.sessions, lastInteraction: inputs.lastInteraction,
+                                policy: policy, now: now)
         face.eyeOpenness -= 0.95 * sleepy
         face.energy -= 0.9 * sleepy
         // A sleeping face with its mouth open and its tongue out is not asleep,
         // it is unwell.
         face.mouthOpen -= sleepy
         face.tongue -= sleepy
+
+        // A floor, and the one thing here that is not a pressure — which is
+        // why it is last and why it says so. Adding would have been wrong in
+        // the obvious way: a click on an already wide-eyed working face would
+        // push it past 1 and pin it there for five minutes. Raising a floor
+        // wakes a shut face and leaves an open one alone.
+        let awake = alertness(lastInteraction: inputs.lastInteraction, policy: policy, now: now)
+        if awake > 0 {
+            face.eyeOpenness = max(face.eyeOpenness, 0.72 * awake)
+            face.energy = max(face.energy, 0.55 * awake)
+        }
 
         return face.clamped()
     }

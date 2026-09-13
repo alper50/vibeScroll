@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import VibeScrollCore
 
 /// Keeps the face's expression current.
@@ -60,6 +61,25 @@ final class FaceModel: ObservableObject {
         recompute()
     }
 
+    /// When somebody last touched the face.
+    private var lastInteraction: Date?
+
+    /// The face was clicked or dragged.
+    ///
+    /// Recomputes straight away rather than waiting for the next tick: the
+    /// whole point is that the eyes open *now*, and a thirty-second timer is
+    /// not an answer to a click. The mood then keeps it awake for
+    /// `drowsyAfter` before it starts drifting off again, so it does not shut
+    /// the moment the reaction finishes.
+    func wake(at date: Date = Date()) {
+        lastInteraction = date
+        // An explicit spring, which overrides the slow ease the expression
+        // normally animates under. That 0.8s is right for a mood drifting and
+        // wrong for an answer to a click — a face that takes most of a second
+        // to notice it was poked is the dull part of this.
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { recompute() }
+    }
+
     /// How many rate limits are still inside the window. The moment card says
     /// the count, and this is the one place that keeps it — the same list the
     /// face's own fatigue reads.
@@ -97,7 +117,8 @@ final class FaceModel: ObservableObject {
         let inputs = FaceInputs(
             sessions: sessions, quota: UsageProbe.shared.snapshot,
             rateLimits: rateLimits,
-            tokensPerMinute: tokensPerMinute(now: now))
+            tokensPerMinute: tokensPerMinute(now: now),
+            lastInteraction: lastInteraction)
         let next = FaceMood.expression(for: inputs, policy: policy, now: now)
         if next != expression { expression = next }
 

@@ -25,22 +25,50 @@ struct FaceView: View {
     /// the same face works in a 110pt strip and in the preview at 3×.
     static let designSize = CGSize(width: 96, height: 72)
 
+    /// How far the engraving's two ghosts sit from the features, in design
+    /// points. Light below and dark above, which is what a groove cut into a
+    /// surface lit from above looks like — the far wall of the groove catches
+    /// the light, the near lip casts into it.
+    ///
+    /// Deliberately under a point each. The face is drawn at roughly half this
+    /// canvas on screen, so these land at a fraction of a pixel and read as
+    /// weight rather than as outlines. Anything heavier and the features get a
+    /// white halo, which on a translucent material looks like dirt rather than
+    /// depth.
+    private static let engraveDrop: CGFloat = 0.85
+    private static let engraveRise: CGFloat = 0.5
+
     var body: some View {
         GeometryReader { geometry in
             let scale = min(geometry.size.width / Self.designSize.width,
                             geometry.size.height / Self.designSize.height)
             ZStack {
-                brow(side: -1)
-                brow(side: 1)
-                eye(side: -1)
-                eye(side: 1)
-                mouth
+                features
+                    .foregroundStyle(Color.white.opacity(0.20))
+                    .offset(y: Self.engraveDrop)
+                features
+                    .foregroundStyle(Color.black.opacity(0.11))
+                    .offset(y: -Self.engraveRise)
+                features
+                    .foregroundStyle(tint)
             }
             .frame(width: Self.designSize.width, height: Self.designSize.height)
             .scaleEffect(scale)
             .frame(width: geometry.size.width, height: geometry.size.height)
         }
-        .foregroundStyle(tint)
+    }
+
+    /// The features themselves, drawn three times: twice as the engraving's
+    /// ghosts and once in the accent colour. Grouped rather than engraved
+    /// shape by shape so the offsets cannot drift apart between features.
+    private var features: some View {
+        ZStack {
+            brow(side: -1)
+            brow(side: 1)
+            eye(side: -1)
+            eye(side: 1)
+            mouth
+        }
     }
 
     // MARK: - Colour

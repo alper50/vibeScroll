@@ -72,22 +72,8 @@ struct FaceWindowView: View {
         // along with the view, so the target only ever gains area.
         .contentShape(Circle())
         .scaleEffect(scale)
-        .onHover { hovering = $0 }
-        // Separate from `onHover` above: that one drives the growth and only
-        // needs to know in or out, while this one needs the position. Reported
-        // against the resting size because the hover scale is a transform and
-        // does not change the coordinate space underneath it.
-        .onContinuousHover(coordinateSpace: .local) { phase in
-            switch phase {
-            case .active(let point):
-                GazeModel.shared.look(
-                    at: point,
-                    in: CGSize(width: CardLayout.faceRestingSize,
-                               height: CardLayout.faceRestingSize))
-            case .ended:
-                GazeModel.shared.rest()
-            }
-        }
+        .onHover { hovering = $0; hovering ? GazeModel.shared.beginTracking()
+                                             : GazeModel.shared.rest() }
         .gesture(clickOrDrag)
         .help("Click to show or hide all sessions, drag to move")
         .animation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.72),
@@ -113,36 +99,89 @@ struct FaceWindowView: View {
     /// never stopped, not because it was drawing.
     private var orb: some View {
         let size = CardLayout.faceRestingSize
-        return Circle()
-            .fill(.regularMaterial)
-            .overlay {
-                Circle().fill(
-                    RadialGradient(
-                        colors: [Color.white.opacity(0.20),
-                                 Color.white.opacity(0.04),
-                                 Color.black.opacity(0.13)],
-                        center: UnitPoint(x: 0.33, y: 0.27),
-                        startRadius: 0,
-                        endRadius: size * 0.92))
-            }
-            .overlay(alignment: .topLeading) {
-                // The specular. A radial fill rather than a blurred ellipse:
-                // soft edges without paying for a filter pass.
-                Ellipse()
-                    .fill(RadialGradient(
-                        colors: [Color.white.opacity(0.34), Color.white.opacity(0)],
-                        center: .center, startRadius: 0, endRadius: size * 0.17))
-                    .frame(width: size * 0.42, height: size * 0.30)
-                    .offset(x: size * 0.13, y: size * 0.10)
-            }
-            .overlay {
-                Circle().strokeBorder(
-                    LinearGradient(
-                        colors: [Color.white.opacity(0.38), Color.black.opacity(0.12)],
-                        startPoint: .top, endPoint: .bottom),
-                    lineWidth: 1)
-            }
-            .shadow(color: .black.opacity(0.18), radius: size * 0.07, y: size * 0.03)
+        return ZStack {
+            // Under it, and only under it. The symmetric drop shadow this
+            // replaces spread evenly in every direction, which is the shadow of
+            // something floating; a sphere sitting in a light has its darkest
+            // shadow directly beneath.
+            Ellipse()
+                .fill(RadialGradient(
+                    colors: [Color.black.opacity(0.26), Color.black.opacity(0)],
+                    center: .center, startRadius: 0, endRadius: size * 0.30))
+                .frame(width: size * 0.80, height: size * 0.24)
+                .offset(y: size * 0.46)
+
+            Circle()
+                .fill(.regularMaterial)
+                .overlay {
+                    // The key light, with a real terminator. Four stops rather
+                    // than three: the previous pair ran white straight into
+                    // black across the whole radius, which shades a disc
+                    // evenly. A sphere holds its light over the near half and
+                    // then falls away quickly, and where it falls away is the
+                    // line that makes it read as round.
+                    Circle().fill(
+                        RadialGradient(
+                            stops: [
+                                .init(color: .white.opacity(0.30), location: 0),
+                                .init(color: .white.opacity(0.06), location: 0.42),
+                                .init(color: .black.opacity(0.10), location: 0.78),
+                                .init(color: .black.opacity(0.26), location: 1),
+                            ],
+                            center: UnitPoint(x: 0.32, y: 0.26),
+                            startRadius: 0,
+                            endRadius: size * 0.85))
+                }
+                .overlay {
+                    // Bounce. The cue the old shading had no notion of: a real
+                    // sphere's shadow side is lifted by light coming back off
+                    // whatever it is sitting on, and without it the dark half
+                    // just looks like paint.
+                    Circle().fill(
+                        RadialGradient(
+                            colors: [Color.white.opacity(0.16), Color.white.opacity(0)],
+                            center: UnitPoint(x: 0.72, y: 0.80),
+                            startRadius: 0,
+                            endRadius: size * 0.55))
+                }
+                .overlay(alignment: .topLeading) {
+                    // The specular. A radial fill rather than a blurred
+                    // ellipse: soft edges without paying for a filter pass.
+                    // Smaller and harder than it was — the old one was wide and
+                    // faint enough to read as a glow rather than as a gloss.
+                    Ellipse()
+                        .fill(RadialGradient(
+                            stops: [
+                                .init(color: .white.opacity(0.55), location: 0),
+                                .init(color: .white.opacity(0.12), location: 0.55),
+                                .init(color: .white.opacity(0), location: 1),
+                            ],
+                            center: .center, startRadius: 0, endRadius: size * 0.12))
+                        .frame(width: size * 0.30, height: size * 0.21)
+                        .rotationEffect(.degrees(-20))
+                        .offset(x: size * 0.09, y: size * 0.06)
+                }
+                .overlay {
+                    // Bright where the key grazes the edge, dark through the
+                    // middle, bright again at the bottom right where the bounce
+                    // comes back. The old rim was a plain top-to-bottom fade,
+                    // which is how you light a disc, not a ball.
+                    Circle().strokeBorder(
+                        LinearGradient(
+                            stops: [
+                                .init(color: .white.opacity(0.55), location: 0),
+                                .init(color: .black.opacity(0.14), location: 0.38),
+                                .init(color: .black.opacity(0.10), location: 0.72),
+                                .init(color: .white.opacity(0.30), location: 1),
+                            ],
+                            startPoint: UnitPoint(x: 0.15, y: 0),
+                            endPoint: UnitPoint(x: 0.85, y: 1)),
+                        lineWidth: 1.1)
+                }
+                // Kept, and quieter than it was: the contact shadow grounds it,
+                // this only separates the edge from a busy wallpaper.
+                .shadow(color: .black.opacity(0.12), radius: size * 0.05, y: size * 0.02)
+        }
     }
 
     /// Click opens the session list; a drag moves the window.
@@ -170,6 +209,9 @@ struct FaceWindowView: View {
                 if dragging { FaceWindowController.shared.dragToPointer() }
             }
             .onEnded { _ in
+                // Either way the face has been handled, which is the same
+                // thing to a sleeping face as an agent doing something.
+                FaceModel.shared.wake()
                 if dragging {
                     FaceWindowController.shared.persistOrigin()
                 } else {

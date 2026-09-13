@@ -189,6 +189,60 @@ final class FaceMoodTests: XCTestCase {
         XCTAssertEqual(FaceMood.exertion(tokensPerMinute: 9_999_999, policy: policy), 1)
     }
 
+    // MARK: - Waking up
+
+    func testAnUntouchedFaceWithNothingRunningIsAsleep() {
+        XCTAssertEqual(FaceMood.drowsiness([], now: now), 1)
+        XCTAssertEqual(FaceMood.alertness(lastInteraction: nil, now: now), 0)
+    }
+
+    func testBeingTouchedCountsAsSomethingHappening() {
+        // Same arithmetic an agent event gets: the clock restarts.
+        XCTAssertEqual(FaceMood.drowsiness([], lastInteraction: now, now: now), 0)
+        let policy = FaceMood.Policy(drowsyAfter: 300, asleepAfter: 1200)
+        XCTAssertEqual(
+            FaceMood.drowsiness([], lastInteraction: now.addingTimeInterval(-1200),
+                                policy: policy, now: now),
+            1)
+    }
+
+    func testAClickOpensTheEyesOfAFaceWithNothingRunning() {
+        // The bug this exists for: suppressing drowsiness alone left the face
+        // at `base(for: nil)`, which is eyes at 0.05 — still asleep.
+        let asleep = FaceMood.expression(for: FaceInputs(), now: now)
+        var touched = FaceInputs()
+        touched.lastInteraction = now
+        let woken = FaceMood.expression(for: touched, now: now)
+
+        XCTAssertLessThan(asleep.eyeOpenness, 0.1)
+        XCTAssertGreaterThan(woken.eyeOpenness, 0.6)
+        XCTAssertGreaterThan(woken.energy, asleep.energy)
+    }
+
+    func testWakingIsAFloorRatherThanAPush() {
+        // A click on an already wide-eyed face must not pin it at 1 for the
+        // next five minutes.
+        var busy = FaceInputs(sessions: [session(.working)])
+        let plain = FaceMood.expression(for: busy, now: now)
+        busy.lastInteraction = now
+        XCTAssertEqual(FaceMood.expression(for: busy, now: now).eyeOpenness,
+                       plain.eyeOpenness, accuracy: 0.0001)
+    }
+
+    func testAlertnessHandsOverToDrowsinessWithoutAGap() {
+        // It reaches zero exactly where drowsiness starts to climb, so there
+        // is no window in which the face is neither awake nor asleep.
+        let policy = FaceMood.Policy(drowsyAfter: 300, asleepAfter: 1200)
+        XCTAssertEqual(
+            FaceMood.alertness(lastInteraction: now.addingTimeInterval(-300),
+                               policy: policy, now: now),
+            0, accuracy: 0.0001)
+        XCTAssertEqual(
+            FaceMood.drowsiness([], lastInteraction: now.addingTimeInterval(-300),
+                                policy: policy, now: now),
+            0, accuracy: 0.0001)
+    }
+
     func testSessionsThatAgreeRaiseNoBrow() {
         XCTAssertEqual(FaceMood.discord([session(.working, id: "a"),
                                          session(.working, id: "b")]), 0)
