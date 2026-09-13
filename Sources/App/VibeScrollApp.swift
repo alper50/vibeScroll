@@ -36,6 +36,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // quit; its process is long gone, and leaving the row would block the
         // queue forever.
         TaskQueueStore.shared.reconcileAfterRestart()
+        // Must come after the reconcile above: a leftover `running` row would
+        // otherwise hold the gate shut on the first tick.
+        TaskRunner.shared.start()
 
         // Hooks embed this binary's absolute path, so moving the app silently
         // disconnects every one of them. Repaired before anything else runs, so

@@ -21,6 +21,8 @@ public enum Moment: Equatable, Sendable {
     case windowRenewed
     case longHaul(hours: Int)
     case crowd(count: Int)
+    /// The queue started something by itself.
+    case taskStarted(project: String)
 
     public var title: String {
         switch self {
@@ -32,6 +34,7 @@ public enum Moment: Equatable, Sendable {
         case .windowRenewed:      return "Five-hour window renewed"
         case .longHaul(let h):    return "\(h) hours in"
         case .crowd(let count):   return "\(count) agents at once"
+        case .taskStarted:        return "Queue started a task"
         }
     }
 
@@ -52,6 +55,8 @@ public enum Moment: Equatable, Sendable {
             return "Since your first agent started."
         case .crowd:
             return "Click the face for the full list."
+        case .taskStarted(let project):
+            return ProjectPath.displayName(project)
         }
     }
 
@@ -77,6 +82,7 @@ public enum Moment: Equatable, Sendable {
         case .windowRenewed:    return "windowRenewed"
         case .longHaul(let h):  return "longHaul-\(h)"
         case .crowd(let count): return "crowd-\(count)"
+        case .taskStarted:      return "taskStarted"
         }
     }
 }

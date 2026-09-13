@@ -74,6 +74,28 @@ final class StatusBarController {
         toggle.target = self
         menu.addItem(toggle)
 
+        // The queue drives an agent rather than watching one, so its state is
+        // on the menu whenever it is armed — not buried a window away in
+        // Settings. The line under it is the gate's own reason, so "nothing is
+        // happening" always comes with why.
+        // A checkmark rather than a title that flips between "start" and
+        // "stop". Flipping titles read as an instruction about the *running
+        // task* here, which this switch has nothing to do with — turning it
+        // off stops the queue starting anything new and leaves whatever is
+        // already running alone.
+        let autopilot = NSMenuItem(title: "Run queued tasks automatically",
+                                   action: #selector(toggleAutopilot), keyEquivalent: "")
+        autopilot.target = self
+        autopilot.state = TaskRunner.shared.autopilot ? .on : .off
+        menu.addItem(autopilot)
+        if TaskRunner.shared.autopilot {
+            let status = NSMenuItem(
+                title: "  \(TaskRunner.shared.currentDecision().summary)",
+                action: nil, keyEquivalent: "")
+            status.isEnabled = false
+            menu.addItem(status)
+        }
+
         // The panel is ambient rather than dismissible-forever: hiding it is a
         // pause, and the next agent to start brings it back.
         let panel = NSMenuItem(title: "Hide panel", action: #selector(togglePanel), keyEquivalent: "")
@@ -98,6 +120,13 @@ final class StatusBarController {
     @objc private func openSessions() { CardController.shared.openSessions() }
 
     @objc private func togglePanel() { CardController.shared.togglePanel() }
+
+    @objc private func toggleAutopilot() {
+        TaskRunner.shared.autopilot.toggle()
+        // Like `toggleCards`: on a quiet machine nothing else rebuilds the
+        // menu, so the checkmark would not move until the next session event.
+        rebuildMenu()
+    }
 
     @objc private func toggleCards() {
         CardController.shared.enabled.toggle()

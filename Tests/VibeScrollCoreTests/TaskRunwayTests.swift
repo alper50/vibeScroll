@@ -237,3 +237,46 @@ final class TaskRunwayTests: XCTestCase {
                        .hold(.dailyLimitReached(started: 3, limit: 3)))
     }
 }
+
+// MARK: - What a person is told
+
+/// The gate's wording is part of the gate. A queue that sits still without
+/// saying why reads as broken, and both Settings and the menu bar show these
+/// verbatim — two copies in two views would have drifted.
+final class TaskRunwaySummaryTests: XCTestCase {
+
+    func testReadyToRunSaysSo() {
+        let task = QueuedTask(id: "t", order: 0, projectPath: "/work/app",
+                              prompt: "go", createdAt: Date())
+        XCTAssertEqual(TaskRunway.Decision.launch(task).summary, "Ready to run")
+    }
+
+    func testADecisionDefersToItsHold() {
+        XCTAssertEqual(TaskRunway.Decision.hold(.queueEmpty).summary,
+                       TaskRunway.Hold.queueEmpty.summary)
+    }
+
+    func testEveryHoldExplainsItselfWithItsNumbers() {
+        let cases: [(TaskRunway.Hold, String)] = [
+            (.queueEmpty, "Nothing queued"),
+            (.taskAlreadyRunning, "A task is running"),
+            (.dailyLimitReached(started: 3, limit: 3), "Daily limit reached (3/3)"),
+            (.quotaStale(age: 900), "Quota reading is 15 min old"),
+            (.sessionWindowSpent(percent: 92), "Session window 92% spent"),
+            (.weeklyReserve(percent: 94, reserve: 90), "Weekly at 94%, holding the last 10%"),
+            (.aheadOfPace(usedPercent: 85, elapsedPercent: 65),
+             "Weekly 85% spent, 65% of the week gone"),
+            (.agentBusy, "Your own agent is working"),
+            (.userActive, "You are at the keyboard"),
+            (.cooldown(remaining: 42), "Cooling down (42s)"),
+        ]
+        for (hold, expected) in cases {
+            XCTAssertEqual(hold.summary, expected)
+        }
+    }
+
+    func testNoQuotaReadingPointsAtTheSettingThatFixesIt() {
+        // The one hold a person can act on immediately, so it says how.
+        XCTAssertTrue(TaskRunway.Hold.quotaUnavailable.summary.contains("quota check"))
+    }
+}

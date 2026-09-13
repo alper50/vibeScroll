@@ -41,6 +41,81 @@ final class TaskRunner: ObservableObject {
         set { UserDefaults.standard.set(newValue, forKey: Self.systemPromptKey) }
     }
 
+    // MARK: - The automatic gate
+
+    /// Whether the queue is allowed to start work on its own.
+    ///
+    /// **Off by default, and it stays that way until somebody says otherwise.**
+    /// Everything else in vibeScroll watches; this drives an AI agent that
+    /// edits files while nobody is looking. A watching tool may reasonably
+    /// default to on. A driving one may not.
+    @Published var autopilot: Bool =
+        UserDefaults.standard.bool(forKey: autopilotKey)
+    {
+        didSet {
+            UserDefaults.standard.set(autopilot, forKey: Self.autopilotKey)
+            autopilot ? startPolling() : stopPolling()
+        }
+    }
+
+    private static let autopilotKey = "vibescroll.task.autopilot"
+
+    /// A minute is far shorter than anything the gate measures — the quota
+    /// snapshot is allowed to be ten minutes old, the idle requirement is
+    /// fifteen, the cooldown is one. Polling faster would ask the same
+    /// questions of the same unchanged numbers.
+    private static let pollInterval: TimeInterval = 60
+
+    private var pollTimer: Timer?
+
+    /// Called at launch. Does nothing unless the switch is already on, so a
+    /// machine that never opted in never starts a timer.
+    func start() {
+        if autopilot { startPolling() }
+    }
+
+    private func startPolling() {
+        guard pollTimer == nil else { return }
+        pollTimer = Timer.scheduledTimer(
+            withTimeInterval: Self.pollInterval, repeats: true
+        ) { _ in
+            Task { @MainActor in TaskRunner.shared.tick() }
+        }
+        // Turning it on should tell you something straight away rather than
+        // leaving you to wonder for a minute whether it took. Safe to do
+        // immediately: you just clicked, so `requireUserIdle` holds it — the
+        // switch cannot launch anything by being flipped.
+        tick()
+    }
+
+    private func stopPolling() {
+        pollTimer?.invalidate()
+        pollTimer = nil
+    }
+
+    /// One turn of the loop: ask the gate, act only on `launch`.
+    ///
+    /// Every hold is the gate's business, not this method's — the ordering of
+    /// the reasons, what counts as too fast, what happens with no quota
+    /// reading, all of it is decided and tested in `TaskRunway`. This exists
+    /// to do the one thing a pure function cannot.
+    func tick(now: Date = Date(), policy: TaskRunway.Policy = .init()) {
+        guard autopilot, runningTaskID == nil else { return }
+        guard case .launch(let task) = currentDecision(policy: policy) else { return }
+
+        // Both, and said before the run rather than after: the whole point is
+        // to know that something started while you were not watching. The card
+        // is the ambient version and answers to the cards switch; the
+        // notification does not, because "an agent began editing files on its
+        // own" is not a thing to miss because you muted a different feature.
+        let project = ProjectPath.displayName(task.projectPath)
+        CardController.shared.raise(.taskStarted(project: task.projectPath), now: now)
+        NotificationManager.shared.notify(
+            title: "\(project): queue started a task",
+            body: Self.firstLine(task.prompt))
+        run(task, policy: policy)
+    }
+
     // MARK: - Running
 
     func run(_ task: QueuedTask, policy: TaskRunway.Policy = .init()) {
@@ -357,8 +432,7 @@ extension TaskRunner {
         return seconds.isFinite && seconds >= 0 ? seconds : nil
     }
 
-    /// What the queue would do right now. Phase 2 only displays this; the loop
-    /// that acts on it arrives with the automatic gate.
+    /// What the queue would do right now.
     func currentDecision(policy: TaskRunway.Policy = .init()) -> TaskRunway.Decision {
         let queue = TaskQueueStore.shared.queue
         return TaskRunway.decide(

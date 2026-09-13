@@ -75,9 +75,10 @@ struct TasksSettingsView: View {
     /// A queue that sits still without saying why reads as broken, so the gate's
     /// own reason is shown verbatim rather than summarised as "waiting".
     private var gateStatus: some View {
-        Section("Status") {
+        Section {
+            Toggle("Run queued tasks automatically", isOn: $runner.autopilot)
             LabeledContent("Queue") {
-                Text(Self.describe(runner.currentDecision()))
+                Text(runner.currentDecision().summary)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.trailing)
             }
@@ -87,42 +88,12 @@ struct TasksSettingsView: View {
             if let error = store.lastError {
                 Text(error).font(.caption).foregroundStyle(.orange)
             }
-        }
-    }
-
-    static func describe(_ decision: TaskRunway.Decision) -> String {
-        switch decision {
-        case .launch:
-            return "Ready to run"
-        case .hold(let reason):
-            return describe(reason)
-        }
-    }
-
-    static func describe(_ hold: TaskRunway.Hold) -> String {
-        switch hold {
-        case .queueEmpty:
-            return "Nothing queued"
-        case .taskAlreadyRunning:
-            return "A task is running"
-        case .dailyLimitReached(let started, let limit):
-            return "Daily limit reached (\(started)/\(limit))"
-        case .quotaUnavailable:
-            return "No quota reading \u{2014} turn on the quota check in General"
-        case .quotaStale(let age):
-            return "Quota reading is \(Int(age / 60)) min old"
-        case .sessionWindowSpent(let percent):
-            return "Session window \(percent)% spent"
-        case .weeklyReserve(let percent, let reserve):
-            return "Weekly at \(percent)%, holding the last \(100 - reserve)%"
-        case .aheadOfPace(let used, let elapsed):
-            return "Weekly \(used)% spent, \(elapsed)% of the week gone"
-        case .agentBusy:
-            return "Your own agent is working"
-        case .userActive:
-            return "You are at the keyboard"
-        case .cooldown(let remaining):
-            return "Cooling down (\(Int(remaining))s)"
+        } header: {
+            Text("Status")
+        } footer: {
+            Text("Off, the queue only runs what you start by hand. On, it checks once a minute and starts the next task when there is spare quota, no agent of yours is working, and you have been away from the keyboard \u{2014} the reason it is holding is shown above. It never pushes or merges; each task is left on its own branch.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 

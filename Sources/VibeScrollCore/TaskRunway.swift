@@ -85,11 +85,52 @@ public enum TaskRunway {
         case agentBusy
         case userActive
         case cooldown(remaining: TimeInterval)
+
+        /// Why the queue is standing still, in the words a person can act on.
+        public var summary: String {
+            switch self {
+            case .queueEmpty:
+                return "Nothing queued"
+            case .taskAlreadyRunning:
+                return "A task is running"
+            case .dailyLimitReached(let started, let limit):
+                return "Daily limit reached (\(started)/\(limit))"
+            case .quotaUnavailable:
+                return "No quota reading \u{2014} turn on the quota check in General"
+            case .quotaStale(let age):
+                return "Quota reading is \(Int(age / 60)) min old"
+            case .sessionWindowSpent(let percent):
+                return "Session window \(percent)% spent"
+            case .weeklyReserve(let percent, let reserve):
+                return "Weekly at \(percent)%, holding the last \(100 - reserve)%"
+            case .aheadOfPace(let used, let elapsed):
+                return "Weekly \(used)% spent, \(elapsed)% of the week gone"
+            case .agentBusy:
+                return "Your own agent is working"
+            case .userActive:
+                return "You are at the keyboard"
+            case .cooldown(let remaining):
+                return "Cooling down (\(Int(remaining))s)"
+            }
+        }
     }
 
     public enum Decision: Equatable, Sendable {
         case launch(QueuedTask)
         case hold(Hold)
+
+        /// One line, for Settings and the menu bar.
+        ///
+        /// Here rather than in a view because two surfaces show it and a queue
+        /// that sits still without saying why reads as broken — the wording is
+        /// part of the gate, not decoration on top of it. Same reasoning as
+        /// `FaceMood.Reason.summary`.
+        public var summary: String {
+            switch self {
+            case .launch:           return "Ready to run"
+            case .hold(let reason): return reason.summary
+            }
+        }
     }
 
     /// Window kinds and the pace arithmetic live in `QuotaPace`: the face asks
