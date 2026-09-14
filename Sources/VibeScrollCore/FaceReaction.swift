@@ -36,24 +36,38 @@ public enum FaceReaction: Equatable, Sendable, CaseIterable {
         case .noticed:
             return FaceImpulse(browAngle: 0.5, eyeOpenness: 0.35, mouthCurve: -0.1,
                                rise: 0.12, hold: 0.35, fall: 0.45)
+        // Good news does not leave a face the instant it lands. The grin peaks,
+        // loosens into a smile, and is still faintly there a second later.
         case .pleased:
             return FaceImpulse(browAngle: 0.2, eyeOpenness: -0.25, mouthCurve: 0.5,
-                               rise: 0.16, hold: 0.5, fall: 0.6)
+                               rise: 0.16, hold: 0.4,
+                               afterglow: 0.35, decay: 0.3, linger: 0.5,
+                               fall: 0.55)
         case .winced:
             return FaceImpulse(browAngle: -0.45, eyeOpenness: -0.5, mouthCurve: -0.35,
                                rise: 0.08, hold: 0.25, fall: 0.5)
-        // The quickest of the four, and the only one that opens the mouth: a
-        // small "oh" on being addressed. The speed is the point — a reply to a
-        // click that takes as long as a mood change does not read as a reply.
+        // The quickest of the four to *arrive*, and the only one that opens the
+        // mouth: a small "oh" on being addressed. Arriving fast is what makes
+        // it read as a reply — but leaving just as fast made it read as a
+        // twitch, so the grin relaxes into a smile and takes its time going.
         case .greeted:
-            return FaceImpulse(browAngle: 0.35, eyeOpenness: 0.3, mouthCurve: 0.35,
+            return FaceImpulse(browAngle: 0.35, eyeOpenness: 0.3, mouthCurve: 0.4,
                                mouthOpen: 0.3,
-                               rise: 0.07, hold: 0.14, fall: 0.3)
+                               rise: 0.07, hold: 0.2,
+                               afterglow: 0.45, decay: 0.32, linger: 0.75,
+                               fall: 0.6)
         }
     }
 }
 
 /// The offsets a reaction applies at full strength, and its shape in time.
+///
+/// The envelope has an optional middle. A reaction either drops straight back
+/// to the mood (rise → hold → fall), or relaxes to a lower `afterglow` level
+/// and sits there for `linger` before letting go (rise → hold → decay → linger
+/// → fall). Warm reactions want the second shape: an expression that vanishes
+/// the instant it peaked reads as a sprite being swapped out, while one that
+/// loosens and fades from there reads as somebody reacting to you.
 public struct FaceImpulse: Equatable, Sendable {
     public var browAngle: Double
     public var eyeOpenness: Double
@@ -66,22 +80,44 @@ public struct FaceImpulse: Equatable, Sendable {
     public var rise: TimeInterval
     /// Time held there.
     public var hold: TimeInterval
-    /// Time to fade back to the mood underneath.
+    /// How much of the impulse is still applied once the peak has passed, 0…1.
+    /// Zero means the reaction has no tail and `decay`/`linger` are skipped,
+    /// which is what a flinch wants.
+    public var afterglow: Double
+    /// Time to relax from the peak down to `afterglow`.
+    public var decay: TimeInterval
+    /// Time spent sitting at `afterglow` before letting go of it.
+    public var linger: TimeInterval
+    /// Time to fade the rest of the way back to the mood underneath.
     public var fall: TimeInterval
 
     public init(browAngle: Double, eyeOpenness: Double, mouthCurve: Double,
                 mouthOpen: Double = 0,
-                rise: TimeInterval, hold: TimeInterval, fall: TimeInterval) {
+                rise: TimeInterval, hold: TimeInterval,
+                afterglow: Double = 0, decay: TimeInterval = 0, linger: TimeInterval = 0,
+                fall: TimeInterval) {
         self.browAngle = browAngle
         self.eyeOpenness = eyeOpenness
         self.mouthCurve = mouthCurve
         self.mouthOpen = mouthOpen
         self.rise = rise
         self.hold = hold
+        self.afterglow = afterglow
+        self.decay = decay
+        self.linger = linger
         self.fall = fall
     }
 
-    public var total: TimeInterval { rise + hold + fall }
+    /// Whether the reaction relaxes through a lower level on its way out.
+    ///
+    /// The one place that decides it, so the player and `total` cannot disagree
+    /// about which phases exist — a mismatch there would clear the impulse
+    /// while the face was still wearing it.
+    public var hasAfterglow: Bool { afterglow > 0 && (decay > 0 || linger > 0) }
+
+    public var total: TimeInterval {
+        hasAfterglow ? rise + hold + decay + linger + fall : rise + hold + fall
+    }
 }
 
 public extension FaceExpression {

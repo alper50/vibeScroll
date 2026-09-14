@@ -33,7 +33,7 @@ final class CardController: ObservableObject {
     private var activeTopic: TopicCategory?
 
     /// What the panel is showing.
-    enum Mode { case card, sessions }
+    enum Mode { case card, sessions, categories }
     @Published private(set) var mode: Mode = .card
 
     /// Every live session, refreshed by the daemon. Kept up to date even while
@@ -121,9 +121,14 @@ final class CardController: ObservableObject {
             // tick would make the panel visibly jitter.
             syncPanel()
         }
+        // Read before the gates below, and deliberately not remembered past
+        // them: "they have all just stopped" is true for a moment, and a gate
+        // that held it would have the face announce it once cards came back on
+        // — about something that finished half an hour ago.
+        let justWentQuiet = noteWorkingCount(sessions, now: now)
 
         guard enabled, !isBrowsing, mode == .card else { return }
-        raiseMilestones(sessions, now: now)
+        raiseMilestones(sessions, justWentQuiet: justWentQuiet, now: now)
         guard let topic = CategoryResolver.aggregate(sessions) else { return }
         // `aggregate` already picked the session; find it again for the dwell
         // clock and the context line.
@@ -148,7 +153,7 @@ final class CardController: ObservableObject {
     /// still doing whatever it was doing.
     func showNext(now: Date = Date()) {
         guard let card = scheduler.advance(
-            from: ContentStore.shared.allCards,
+            from: nextPool,
             topic: activeTopic,
             excluding: current?.id,
             now: now
@@ -161,6 +166,73 @@ final class CardController: ObservableObject {
         present(card, context: context)
     }
 
+    /// What the session list should say about quota, or `nil` when there is
+    /// nothing honest to say — the probe is off, or nothing on screen is
+    /// covered by it. Recomputed on read: both inputs are already published,
+    /// and the alternative is a third copy of them to keep in step.
+    var quotaSummary: QuotaSummary.Summary? {
+        QuotaSummary.summarise(sessions: sessions, snapshot: UsageProbe.shared.snapshot)
+    }
+
+    /// Topics that actually have cards, with their counts.
+    ///
+    /// Empty categories are left out rather than shown disabled: a picker whose
+    /// rows do nothing teaches the user to distrust the rest of them, and which
+    /// topics have content is the backend's business to change, not something
+    /// worth reporting as a gap here.
+    var browsableCategories: [(category: TopicCategory, count: Int)] {
+        TopicCategory.allCases.compactMap { category in
+            let count = ContentStore.shared.cards(for: category).count
+            return count > 0 ? (category, count) : nil
+        }
+    }
+
+    /// Opens the topic picker from the card's category badge.
+    func showCategories() {
+        guard !browsableCategories.isEmpty else { return }
+        mode = .categories
+        suppressed = false
+        syncPanel()
+    }
+
+    /// Jumps to a topic the user picked.
+    ///
+    /// Manual navigation, like `showNext`, and it answers to none of the pacing
+    /// gates for the same reason: they exist to stop the surface talking over
+    /// you, and this is you asking. `isBrowsing` is set so an automatic card
+    /// cannot replace what was just requested, and the pick counts as seen.
+    ///
+    /// `activeTopic` moves too, so the Next button carries on inside the topic
+    /// that was chosen rather than snapping back to whatever the agent is doing.
+    func showCategory(_ category: TopicCategory, now: Date = Date()) {
+        let candidates = ContentStore.shared.cards(for: category)
+        // Being inside its repeat window is not a reason to refuse a topic
+        // somebody explicitly asked for. Same escape as `advance`'s last tier,
+        // which is what stops Next dead-ending once the catalogue has been seen.
+        guard let card = scheduler.pick(from: candidates, now: now)
+                ?? scheduler.leastRecentlyShown(in: candidates, now: now)
+        else { return }
+
+        activeTopic = category
+        isBrowsing = true
+        scheduler.recordShown(card, now: now)
+        present(card, context: context)
+    }
+
+    /// What the Next button may reach.
+    ///
+    /// `advance` widens past the current topic once that topic runs out, which
+    /// is what stops the button dead-ending. Left alone it widens into the
+    /// diversions too, so a debugging session that exhausted its four cards
+    /// would answer the next press with television. Diversions are reachable by
+    /// asking for one — and once you have, Next stays inside it, because at
+    /// that point television is exactly what was asked for.
+    private var nextPool: [InfoCard] {
+        let all = ContentStore.shared.allCards
+        guard activeTopic?.isDiversion != true else { return all }
+        return all.filter { !$0.category.isDiversion }
+    }
+
     /// Shows a card immediately, bypassing every gate. Used by the Settings
     /// preview button — it must not consume the real pacing budget, so it does
     /// not go through the scheduler at all.
@@ -169,10 +241,40 @@ final class CardController: ObservableObject {
         present(card, context: [])
     }
 
-    /// Thresholds worth remarking on. Both are floored to a whole step so the
-    /// key is stable — the gate rate-limits per key, and a key that changed
-    /// every second would defeat it.
-    private func raiseMilestones(_ sessions: [AgentSession], now: Date) {
+    /// Working sessions at the last refresh, for the edge where the last one
+    /// stops.
+    private var previousWorkingCount = 0
+    /// When the last working session stopped — or, on a machine where nothing
+    /// has started yet, when the app first looked. `nil` while an agent is up.
+    private var quietSince: Date?
+    /// Quiet milestones already remarked on, forgotten as soon as work resumes.
+    private var quietMilestonesShown: Set<Int> = []
+
+    /// Updates the quiet clock. Returns whether the last working session
+    /// stopped on *this* refresh.
+    ///
+    /// Only `working` counts. A session sitting in `waiting` has stopped for as
+    /// long as you have taken to answer it, which is not the room going quiet —
+    /// it is the room waiting for you, and the face already says that.
+    private func noteWorkingCount(_ sessions: [AgentSession], now: Date) -> Bool {
+        let working = sessions.filter { $0.state == .working }.count
+        defer { previousWorkingCount = working }
+
+        guard working == 0 else {
+            quietSince = nil
+            quietMilestonesShown.removeAll()
+            return false
+        }
+        if quietSince == nil { quietSince = now }
+        return previousWorkingCount > 0
+    }
+
+    /// Thresholds worth remarking on. All floored to a whole step so the key is
+    /// stable — the gate rate-limits per key, and a key that changed every
+    /// second would defeat it.
+    private func raiseMilestones(
+        _ sessions: [AgentSession], justWentQuiet: Bool, now: Date
+    ) {
         let live = sessions.filter { $0.state == .working || $0.state == .waiting }
         if live.count >= 3 {
             raise(.crowd(count: live.count), now: now)
@@ -180,6 +282,27 @@ final class CardController: ObservableObject {
         if let oldest = sessions.map(\.createdAt).min() {
             let hours = Int(now.timeIntervalSince(oldest) / 3600)
             if hours >= 3 { raise(.longHaul(hours: hours), now: now) }
+        }
+        // Worth saying while the sessions are still listed to point at. Once
+        // they have been pruned there is nothing left to have stopped.
+        if justWentQuiet, !sessions.isEmpty {
+            raise(.allQuiet(count: sessions.count), now: now)
+        }
+        raiseQuietCheckIn(now: now)
+    }
+
+    /// The face making conversation when there is nothing to report.
+    ///
+    /// A milestone is recorded only once it actually got through: one the gate
+    /// swallowed has not been made, and marking it made would skip it for good.
+    private func raiseQuietCheckIn(now: Date) {
+        guard let quietSince else { return }
+        let minutes = Int(now.timeIntervalSince(quietSince) / 60)
+        guard let milestone = Moment.quietMilestones.last(where: { $0 <= minutes }),
+              !quietMilestonesShown.contains(milestone)
+        else { return }
+        if raise(.stillHere(quietForMinutes: milestone), now: now) {
+            quietMilestonesShown.insert(milestone)
         }
     }
 
@@ -193,11 +316,14 @@ final class CardController: ObservableObject {
     @discardableResult
     func raise(_ moment: Moment, now: Date = Date()) -> Bool {
         guard enabled, !isBrowsing, mode == .card else { return false }
+        // A panel put away by hand stays away for small talk. News earns its
+        // way back on screen; a check-in has not earned anything.
+        if moment.isAmbient, suppressed { return false }
         guard momentGate.admit(moment, now: now) else { return false }
 
         self.moment = moment
         // Like a card: something worth saying is a reason to be back on screen.
-        suppressed = false
+        if !moment.isAmbient { suppressed = false }
         syncPanel()
 
         momentExpiry?.cancel()
@@ -242,6 +368,9 @@ final class CardController: ObservableObject {
     func toggleSessions() {
         mode == .sessions ? showCard() : showSessions()
     }
+
+    /// Whether there is a card to go back to from a list mode.
+    var hasCardBehind: Bool { current != nil }
 
     /// Opens the list from outside the panel (the menu bar), showing it even
     /// when no card is on screen.
@@ -307,7 +436,9 @@ final class CardController: ObservableObject {
     /// What sits under the face right now.
     var panelContent: CardLayout.PanelContent {
         switch mode {
-        case .sessions: return .sessions(count: sessions.count)
+        case .sessions:
+            return .sessions(count: sessions.count, hasQuota: quotaSummary != nil)
+        case .categories: return .categories(count: browsableCategories.count)
         // The moment wins while it is up. It is the only content here with an
         // expiry, so the card it covers is still there when it goes.
         case .card:     return moment != nil ? .moment

@@ -47,11 +47,11 @@ public enum CardLayout {
     /// and five body lines, so it never needs more.
     public static let cardHeight: Double = 200
 
-    /// Sessions mode never shrinks below card height (no jarring shrink when
-    /// switching modes) and never grows past `maxSessionsHeight` (a pet-sized
+    /// A list mode never shrinks below card height (no jarring shrink when
+    /// switching modes) and never grows past `maxListHeight` (a pet-sized
     /// ambient panel must not become a full-screen list).
-    public static let minSessionsHeight: Double = 200
-    public static let maxSessionsHeight: Double = 420
+    public static let minListHeight: Double = 200
+    public static let maxListHeight: Double = 420
 
     /// One session row, and the fixed chrome around the list (header, footer,
     /// padding). Kept here so the view and the window can never disagree about
@@ -59,11 +59,23 @@ public enum CardLayout {
     public static let rowHeight: Double = 28
     static let chrome: Double = 96
 
-    /// Panel height for `count` sessions, clamped. Beyond roughly eleven rows
-    /// the list scrolls inside the capped panel.
-    public static func sessionsHeight(forCount count: Int) -> Double {
+    /// The quota footer under the session list, when there is one to show.
+    ///
+    /// Carried in the panel's size rather than allowed to overlap the list:
+    /// without it the footer eats the last row, and a row half-hidden behind a
+    /// summary looks like a rendering bug rather than a full list.
+    public static let quotaFooterHeight: Double = 22
+
+    /// Panel height for a list of `count` rows, clamped. Beyond roughly eleven
+    /// rows the list scrolls inside the capped panel.
+    ///
+    /// One function for both list modes rather than one each: the session list
+    /// and the topic picker are the same panel drawing the same rows, and two
+    /// copies of this arithmetic would eventually disagree about how tall a row
+    /// is — which shows up as the panel resizing when you switch between them.
+    public static func listHeight(forCount count: Int, footer: Double = 0) -> Double {
         let content = Double(max(count, 1)) * rowHeight
-        return min(max(chrome + content, minSessionsHeight), maxSessionsHeight)
+        return min(max(chrome + footer + content, minListHeight), maxListHeight)
     }
 
     /// What sits underneath the face.
@@ -75,7 +87,12 @@ public enum CardLayout {
         case none
         case card
         case moment
-        case sessions(count: Int)
+        /// `hasQuota` is part of the identity rather than looked up when the
+        /// height is computed: the panel resizes on this value, so a pure
+        /// function of the case is what makes the resize testable.
+        case sessions(count: Int, hasQuota: Bool)
+        /// The topic picker, opened from the card's category badge.
+        case categories(count: Int)
     }
 
     /// A moment is two short lines and nothing else — no category strip, no
@@ -92,7 +109,10 @@ public enum CardLayout {
         case .none:               return 0
         case .card:               return cardHeight
         case .moment:             return momentHeight
-        case .sessions(let rows): return sessionsHeight(forCount: rows)
+        case .sessions(let rows, let hasQuota):
+            return listHeight(forCount: rows, footer: hasQuota ? quotaFooterHeight : 0)
+        case .categories(let rows):
+            return listHeight(forCount: rows)
         }
     }
 

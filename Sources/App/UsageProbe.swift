@@ -72,7 +72,7 @@ final class UsageProbe: ObservableObject {
     }
 
     /// When the five-hour window we last saw was due to roll over. A window
-    /// whose reset time has moved past the one we remember is a new window.
+    /// whose reset time has moved on by most of a window is a new one.
     private var lastSessionReset: Date?
 
     /// Edge-triggered, like the exhausted sound above: the point is the moment
@@ -84,7 +84,9 @@ final class UsageProbe: ObservableObject {
               let resetsAt = window.resetsAt
         else { return }
         defer { lastSessionReset = resetsAt }
-        guard let previous = lastSessionReset, resetsAt > previous else { return }
+        guard let previous = lastSessionReset,
+              QuotaPace.isNewWindow(resetsAt: resetsAt, after: previous, kind: window.kind)
+        else { return }
         CardController.shared.raise(.windowRenewed)
     }
 

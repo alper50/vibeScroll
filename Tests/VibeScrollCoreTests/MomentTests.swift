@@ -34,11 +34,48 @@ final class MomentTests: XCTestCase {
             .windowRenewed,
             .longHaul(hours: 4),
             .crowd(count: 3),
+            .taskStarted(project: "/Users/me/work/app"),
+            .allQuiet(count: 2),
+            .stillHere(quietForMinutes: 30),
         ]
         for moment in all {
             XCTAssertFalse(moment.title.isEmpty, "\(moment) has no title")
             XCTAssertFalse(moment.detail.isEmpty, "\(moment) has no detail")
         }
+    }
+
+    func testTheAgentsStoppingReadsDifferentlyAloneAndInACrowd() {
+        XCTAssertEqual(Moment.allQuiet(count: 1).title, "Your agent stopped")
+        XCTAssertEqual(Moment.allQuiet(count: 4).title, "All 4 stopped")
+    }
+
+    func testACheckInSaysHowLongItHasBeenQuiet() {
+        // Whole units: the number is the point, the precision is not.
+        XCTAssertEqual(Moment.stillHere(quietForMinutes: 30).detail, "Quiet for 30 minutes.")
+        XCTAssertEqual(Moment.stillHere(quietForMinutes: 60).detail, "An hour without an agent.")
+        XCTAssertEqual(Moment.stillHere(quietForMinutes: 240).detail, "4 hours without an agent.")
+    }
+
+    func testOnlySmallTalkIsAmbient() {
+        // Everything else is news, and news is allowed to bring the panel back.
+        XCTAssertTrue(Moment.stillHere(quietForMinutes: 30).isAmbient)
+        let news: [Moment] = [
+            .welcome, .allQuiet(count: 2), .rateLimited(count: 1), .windowRenewed,
+            .crowd(count: 3), .longHaul(hours: 4), .taskStarted(project: "/a"),
+            .sessionStarted(agent: .claude, project: nil),
+            .turnFinished(agent: .claude, project: nil),
+            .waitingOnYou(agent: .claude, project: nil),
+        ]
+        for moment in news {
+            XCTAssertFalse(moment.isAmbient, "\(moment) is news, not small talk")
+        }
+    }
+
+    func testTheQuietMilestonesClimb() {
+        // The caller takes the last one at or below the elapsed minutes, which
+        // picks the wrong milestone if they are not in order.
+        XCTAssertFalse(Moment.quietMilestones.isEmpty)
+        XCTAssertEqual(Moment.quietMilestones, Moment.quietMilestones.sorted())
     }
 
     // MARK: - The gate
@@ -81,6 +118,24 @@ final class MomentTests: XCTestCase {
         XCTAssertTrue(gate.admit(.longHaul(hours: 4), now: now))
         XCTAssertTrue(gate.admit(.longHaul(hours: 5), now: now.addingTimeInterval(3600)))
         XCTAssertFalse(gate.admit(.longHaul(hours: 5), now: now.addingTimeInterval(3700)))
+    }
+
+    func testHalfAnHourOfQuietDoesNotSilenceTwoHoursOfIt() {
+        // Same reason as the longHaul milestones: one key per threshold.
+        var gate = MomentGate(policy: .init(perKind: 3600, betweenAny: 45))
+        XCTAssertTrue(gate.admit(.stillHere(quietForMinutes: 30), now: now))
+        XCTAssertTrue(gate.admit(.stillHere(quietForMinutes: 60),
+                                 now: now.addingTimeInterval(1800)))
+        XCTAssertFalse(gate.admit(.stillHere(quietForMinutes: 60),
+                                  now: now.addingTimeInterval(1900)))
+    }
+
+    func testTwoAgentsStoppingTogetherIsOneRemark() {
+        // The count rides on the moment but not on its key: the point is that
+        // the room went quiet, not how many of them left.
+        var gate = MomentGate()
+        XCTAssertTrue(gate.admit(.allQuiet(count: 2), now: now))
+        XCTAssertFalse(gate.admit(.allQuiet(count: 3), now: now.addingTimeInterval(60)))
     }
 
     func testResetForgetsEverything() {

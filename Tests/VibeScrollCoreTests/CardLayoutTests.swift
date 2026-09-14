@@ -6,24 +6,24 @@ final class CardLayoutTests: XCTestCase {
     func testASingleSessionStillFillsTheMinimumHeight() {
         // Switching from card to list must never shrink the panel — a window
         // that jumps smaller under the pointer reads as a glitch.
-        XCTAssertEqual(CardLayout.sessionsHeight(forCount: 1), CardLayout.minSessionsHeight)
-        XCTAssertEqual(CardLayout.sessionsHeight(forCount: 0), CardLayout.minSessionsHeight)
+        XCTAssertEqual(CardLayout.listHeight(forCount: 1), CardLayout.minListHeight)
+        XCTAssertEqual(CardLayout.listHeight(forCount: 0), CardLayout.minListHeight)
     }
 
     func testHeightGrowsWithTheSessionCount() {
-        let four = CardLayout.sessionsHeight(forCount: 4)
-        let eight = CardLayout.sessionsHeight(forCount: 8)
+        let four = CardLayout.listHeight(forCount: 4)
+        let eight = CardLayout.listHeight(forCount: 8)
         XCTAssertGreaterThan(eight, four)
         XCTAssertEqual(eight - four, 4 * CardLayout.rowHeight, accuracy: 0.001)
     }
 
     func testHeightIsCappedSoTheAmbientPanelNeverTakesOverTheScreen() {
-        XCTAssertEqual(CardLayout.sessionsHeight(forCount: 50), CardLayout.maxSessionsHeight)
-        XCTAssertEqual(CardLayout.sessionsHeight(forCount: 12), CardLayout.maxSessionsHeight)
+        XCTAssertEqual(CardLayout.listHeight(forCount: 50), CardLayout.maxListHeight)
+        XCTAssertEqual(CardLayout.listHeight(forCount: 12), CardLayout.maxListHeight)
     }
 
     func testNegativeCountIsTreatedAsOne() {
-        XCTAssertEqual(CardLayout.sessionsHeight(forCount: -3), CardLayout.minSessionsHeight)
+        XCTAssertEqual(CardLayout.listHeight(forCount: -3), CardLayout.minListHeight)
     }
 
     // MARK: - Panel composition
@@ -33,8 +33,8 @@ final class CardLayoutTests: XCTestCase {
         // for this one to show.
         XCTAssertEqual(CardLayout.panelHeight(for: .none), 0)
         XCTAssertEqual(CardLayout.panelHeight(for: .card), CardLayout.cardHeight)
-        XCTAssertEqual(CardLayout.panelHeight(for: .sessions(count: 3)),
-                       CardLayout.sessionsHeight(forCount: 3))
+        XCTAssertEqual(CardLayout.panelHeight(for: .sessions(count: 3, hasQuota: false)),
+                       CardLayout.listHeight(forCount: 3))
     }
 
     func testTheFaceWindowHoldsItsLargestStateAndTheLabel() {
@@ -86,5 +86,32 @@ final class CardLayoutTests: XCTestCase {
         let origin = CardLayout.attachedOrigin(
             faceFrame: tall, cardSize: cardSize, visibleFrame: screen)
         XCTAssertLessThanOrEqual(origin.y + CardLayout.cardHeight, screen.maxY)
+    }
+
+    // MARK: - The topic picker
+
+    func testThePickerIsSizedLikeTheSessionList() {
+        // One panel, one row height, one clamp. Two functions here would show
+        // up as the panel changing size when you switch between the two lists.
+        for count in [0, 1, 3, 8, 13, 50] {
+            XCTAssertEqual(CardLayout.panelHeight(for: .categories(count: count)),
+                           CardLayout.panelHeight(for: .sessions(count: count, hasQuota: false)),
+                           "row count \(count)")
+        }
+    }
+
+    func testEveryTopicFitsWithoutTheClampDoingTheWork() {
+        // Thirteen is every category there is, so the picker at its fullest
+        // must not be the case that hits the ceiling — a list that is always
+        // capped cannot tell the user it has more to scroll.
+        let full = CardLayout.panelHeight(for: .categories(count: TopicCategory.allCases.count))
+        XCTAssertLessThanOrEqual(full, CardLayout.maxListHeight)
+    }
+
+    func testThePickerIsTallerThanACard() {
+        // It replaces the card in the same panel; shrinking to open a list
+        // reads as the panel breaking rather than as a mode change.
+        XCTAssertGreaterThanOrEqual(CardLayout.panelHeight(for: .categories(count: 5)),
+                                    CardLayout.panelHeight(for: .card))
     }
 }

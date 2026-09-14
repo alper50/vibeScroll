@@ -37,11 +37,17 @@ public struct QuotaWindow: Equatable, Sendable {
 
     /// Short human label. Unknown kinds fall back to the raw identifier so a
     /// window we have never seen still displays something truthful.
+    ///
+    /// Every kind `QuotaPace.weeklyKinds` knows about is named here. The Sonnet
+    /// pools used to fall through to the default and render as "Weekly Sonnet"
+    /// beside an Opus pool rendering as "Weekly (Opus)" — two spellings for the
+    /// same idea, in the same list, one line apart.
     public var label: String {
         switch kind {
         case "session", "five_hour": return "Session"
         case "weekly_all", "seven_day": return "Weekly"
         case "weekly_opus", "seven_day_opus": return "Weekly (Opus)"
+        case "weekly_sonnet", "seven_day_sonnet": return "Weekly (Sonnet)"
         default: return kind.replacingOccurrences(of: "_", with: " ").capitalized
         }
     }

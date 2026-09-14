@@ -51,6 +51,8 @@ struct InfoCardView: View {
             }
         case .sessions:
             sessionsBody
+        case .categories:
+            categoriesBody
         }
     }
 
@@ -115,16 +117,34 @@ struct InfoCardView: View {
 
     private func cardHeader(_ card: InfoCard) -> some View {
         HStack(spacing: 6) {
-            Text(card.category.fallbackLabel.uppercased())
+            // The badge was a label for as long as there was nothing else to
+            // look at. It is the one piece of chrome already naming a topic, so
+            // it is the obvious place to ask for a different one.
+            Button { controller.showCategories() } label: {
+                HStack(spacing: 3) {
+                    Text(card.category.fallbackLabel.uppercased())
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 7, weight: .bold))
+                        .opacity(0.7)
+                }
                 .font(.system(size: 9, weight: .bold))
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3)
                 .background(Capsule().fill(Color.accentColor.opacity(0.16)))
                 .foregroundStyle(Color.accentColor)
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .help("Browse another topic")
 
-            Text(card.level.rawValue)
-                .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(.tertiary)
+            // A difficulty on a television fact is a label with nothing behind
+            // it. Diversions carry the field because the decoder requires one;
+            // that is not a reason to put it on screen.
+            if !card.category.isDiversion {
+                Text(card.level.rawValue)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.tertiary)
+            }
 
             Spacer()
 
@@ -217,8 +237,149 @@ struct InfoCardView: View {
                     }
                 }
             }
+
+            if let quota = controller.quotaSummary {
+                quotaFooter(quota)
+            }
         }
         .padding(14)
+    }
+
+    /// Quota under the list rather than on each row.
+    ///
+    /// One account, one allowance: four Claude sessions would otherwise each
+    /// print the same 58% and read as a per-session figure, which is not a
+    /// thing that exists. Absent entirely when the probe is off, which is the
+    /// default — the list then looks exactly as it always has.
+    @ViewBuilder
+    private func quotaFooter(_ quota: QuotaSummary.Summary) -> some View {
+        HStack(spacing: 5) {
+            if let owner = quota.attribution {
+                // Shown only when the list holds agents this reading does not
+                // cover, so one figure cannot look like it covers all of them.
+                Text(owner)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+
+            ForEach(Array(quota.windows.enumerated()), id: \.offset) { index, window in
+                if index > 0 || quota.attribution != nil {
+                    Text("\u{00B7}").foregroundStyle(.quaternary).font(.system(size: 10))
+                }
+                Text(window.label)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                Text("\(window.percentUsed)%")
+                    .font(.system(size: 10, weight: .medium))
+                    .monospacedDigit()
+                    .foregroundStyle(color(for: window))
+            }
+
+            Spacer(minLength: 4)
+
+            if quota.untrackedCount > 0 {
+                // The other agents write no quota we can read. Said as a count
+                // rather than left blank, so a missing figure reads as "not
+                // measured" instead of "nothing spent".
+                Text("\(quota.untrackedCount) untracked")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.quaternary)
+                    .fixedSize()
+            }
+        }
+        .lineLimit(1)
+        .frame(height: CardLayout.quotaFooterHeight, alignment: .leading)
+    }
+
+    /// Severity comes from the provider, so no threshold is invented here —
+    /// except exhaustion, which is keyed off the percentage for the same reason
+    /// it is everywhere else: it cannot drift when a label is renamed.
+    private func color(for window: QuotaSummary.Window) -> Color {
+        if window.isExhausted { return .red }
+        switch window.severity {
+        case .critical: return .red
+        case .warning:  return .orange
+        case .normal:   return .secondary
+        case .unknown:  return .secondary
+        }
+    }
+
+    // MARK: - Topic picker
+
+    /// Built like the session list rather than as a pop-up menu.
+    ///
+    /// The panel is a `.nonactivatingPanel` — it must never take focus from the
+    /// terminal you are typing in — and a menu that opens outside the bounds of
+    /// a window that cannot become key is a fight with AppKit for no gain. The
+    /// panel already knows how to be a list and how to resize to one, so this
+    /// is the same move the sessions button makes.
+    @ViewBuilder
+    private var categoriesBody: some View {
+        let topics = controller.browsableCategories
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Text("TOPICS")
+                    .font(.system(size: 9, weight: .bold))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(Color.accentColor.opacity(0.16)))
+                    .foregroundStyle(Color.accentColor)
+
+                Spacer()
+
+                if controller.hasCardBehind {
+                    iconButton("chevron.left", help: "Back to card") { controller.showCard() }
+                }
+                iconButton("xmark", help: "Close") { controller.dismissCard() }
+            }
+
+            if topics.isEmpty {
+                Spacer()
+                Text("No cards yet")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity)
+                Spacer()
+            } else {
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 0) {
+                        ForEach(topics, id: \.category) { topic in
+                            categoryRow(topic.category, count: topic.count)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(14)
+    }
+
+    private func categoryRow(_ category: TopicCategory, count: Int) -> some View {
+        // The topic the visible card came from, not the one the agent is on:
+        // this list sits in front of a card, and marking a different row would
+        // be pointing at something the user cannot see.
+        let isCurrent = controller.current?.category == category
+        return Button { controller.showCategory(category) } label: {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(isCurrent ? Color.accentColor : Color.clear)
+                    .frame(width: 6, height: 6)
+
+                Text(category.fallbackLabel)
+                    .font(.system(size: 11, weight: isCurrent ? .semibold : .regular))
+                    .lineLimit(1)
+
+                Spacer(minLength: 6)
+
+                Text("\(count)")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .monospacedDigit()
+            }
+            .padding(.horizontal, 4)
+            .frame(height: CardLayout.rowHeight)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private func row(for session: AgentSession, now: Date) -> some View {

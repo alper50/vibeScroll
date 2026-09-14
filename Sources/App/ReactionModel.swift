@@ -54,8 +54,25 @@ final class ReactionModel: ObservableObject {
         self.impulse = impulse
 
         withAnimation(.easeOut(duration: impulse.rise)) { strength = 1 }
-        schedule(after: impulse.rise + impulse.hold) { [weak self] in
-            withAnimation(.easeInOut(duration: impulse.fall)) { self?.strength = 0 }
+
+        let peakEnds = impulse.rise + impulse.hold
+        if impulse.hasAfterglow {
+            // Down to the afterglow, wait there, and only then let go. Two
+            // gentle moves rather than one drop, because the level is the whole
+            // point: the face is still reacting while it sits at it, which is
+            // what a smile does and what dropping straight to the mood did not.
+            schedule(after: peakEnds) { [weak self] in
+                withAnimation(.easeInOut(duration: impulse.decay)) {
+                    self?.strength = impulse.afterglow
+                }
+            }
+            schedule(after: peakEnds + impulse.decay + impulse.linger) { [weak self] in
+                withAnimation(.easeInOut(duration: impulse.fall)) { self?.strength = 0 }
+            }
+        } else {
+            schedule(after: peakEnds) { [weak self] in
+                withAnimation(.easeInOut(duration: impulse.fall)) { self?.strength = 0 }
+            }
         }
         // Cleared only once the fade has finished, so the expression it was
         // being added to stays put until there is nothing left to add.

@@ -45,7 +45,7 @@ Two rules the whole design follows:
 | --- | --- |
 | `Sources/VibeScrollCore/` | Pure logic: event decoding, state machine, category resolution, pacing. No AppKit, fully tested. |
 | `Sources/App/` | The macOS app: daemon, menu bar, card panel, settings — plus the `hook` and `run` CLI roles. |
-| `Tests/` | 236 tests over the core. |
+| `Tests/` | 306 tests over the core. |
 
 The teaching content is served by a separate repository,
 [vibeScroll-backend](../vibeScroll-backend). The two are coupled only by an
@@ -276,6 +276,19 @@ What matters on this side is the contract:
 - The whole catalogue is cached to `~/.vibescroll/cache/catalog.json`, so the
   app keeps showing cards with the backend unreachable. A failed refresh is
   silent by design — yesterday's cards beat an empty surface.
+- A deployed backend can require a signed request. `ClientSignature` adds an
+  HMAC over `<timestamp>\n<path>` when the build carries a secret, and sends
+  nothing when it does not — so an unconfigured app and an unconfigured server
+  work together out of the box. Set one with
+  `python3 scripts/make-secret.py <secret>`, and the same value in the
+  backend's `VIBESCROLL_SECRETS`.
+
+  This is a turnstile, not a lock: the secret ships inside a downloadable app,
+  so anyone willing to run `strings` on the binary has it. It keeps the endpoint
+  uninteresting to scrapers and labels every request with a client version. The
+  cards are public content; there is nothing here worth pretending otherwise
+  about. A 401 is the one refresh failure reported by name rather than
+  swallowed, because it is the only one that will never resolve itself.
 - `TopicCategory` is the shared vocabulary. Adding a category means adding it
   here **and** in the backend's `CATEGORIES`. Server-first is safe: an unknown
   category degrades to `generic` on an older client rather than failing the

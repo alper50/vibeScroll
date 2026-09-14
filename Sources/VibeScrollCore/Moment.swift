@@ -23,6 +23,24 @@ public enum Moment: Equatable, Sendable {
     case crowd(count: Int)
     /// The queue started something by itself.
     case taskStarted(project: String)
+    /// Everything that was running has stopped. Raised while the sessions are
+    /// still on screen to point at, not once they have been pruned away.
+    case allQuiet(count: Int)
+    /// Nothing has run for a while.
+    ///
+    /// The only case here that is not about something happening — it is the
+    /// face noticing that nothing has, which is the one thing an ambient
+    /// surface can say that a notification never would.
+    case stillHere(quietForMinutes: Int)
+
+    /// How long the room has to stay empty before the face says anything, in
+    /// minutes.
+    ///
+    /// Milestones rather than an interval, for the same reason `longHaul` uses
+    /// them: each one is its own throttle key, so half an hour of quiet cannot
+    /// silence two hours of it. And because a check-in every five minutes is
+    /// nagging rather than company.
+    public static let quietMilestones = [30, 60, 120, 240]
 
     public var title: String {
         switch self {
@@ -35,6 +53,9 @@ public enum Moment: Equatable, Sendable {
         case .longHaul(let h):    return "\(h) hours in"
         case .crowd(let count):   return "\(count) agents at once"
         case .taskStarted:        return "Queue started a task"
+        case .allQuiet(let count):
+            return count == 1 ? "Your agent stopped" : "All \(count) stopped"
+        case .stillHere:          return "Still here"
         }
     }
 
@@ -57,6 +78,16 @@ public enum Moment: Equatable, Sendable {
             return "Click the face for the full list."
         case .taskStarted(let project):
             return ProjectPath.displayName(project)
+        case .allQuiet:
+            return "Nothing is running now."
+        // Said in whole units because the number is the point and the precision
+        // is not: "quiet for 97 minutes" is a stopwatch reading, not a remark.
+        case .stillHere(let minutes):
+            switch minutes {
+            case ..<60:  return "Quiet for \(minutes) minutes."
+            case 60:     return "An hour without an agent."
+            default:     return "\(minutes / 60) hours without an agent."
+            }
         }
     }
 
@@ -83,7 +114,23 @@ public enum Moment: Equatable, Sendable {
         case .longHaul(let h):  return "longHaul-\(h)"
         case .crowd(let count): return "crowd-\(count)"
         case .taskStarted:      return "taskStarted"
+        case .allQuiet:         return "allQuiet"
+        // Per milestone, like longHaul: reaching thirty minutes must not
+        // swallow the remark about reaching an hour.
+        case .stillHere(let m): return "stillHere-\(m)"
         }
+    }
+
+    /// Whether this is the face making conversation rather than reporting
+    /// something that happened.
+    ///
+    /// A panel somebody put away by hand stays away for these. Everything else
+    /// here is news and earns its way back on screen; small talk does not, and
+    /// a check-in that reopens a surface you just closed is exactly what makes
+    /// an ambient app something people turn off.
+    public var isAmbient: Bool {
+        if case .stillHere = self { return true }
+        return false
     }
 }
 

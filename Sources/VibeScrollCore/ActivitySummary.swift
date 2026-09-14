@@ -56,6 +56,12 @@ public enum ActivitySummary {
         case .delegating:     return "Delegating"
         case .research:       return "Fetching"
         case .generic:        return "Working on"
+        // Unreachable: this describes what an agent is doing, and
+        // `CategoryResolver` cannot resolve one of these. Listed explicitly
+        // rather than caught by a `default`, so a real work topic added later
+        // still fails to compile here instead of silently reading "Working on".
+        case .gameOfThrones, .breakingBad, .strangerThings, .theOffice:
+            return "Working on"
         }
     }
 

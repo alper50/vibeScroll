@@ -46,6 +46,26 @@ public enum QuotaPace {
         windows.filter { kinds.contains($0.kind) }.max { $0.percentUsed < $1.percentUsed }
     }
 
+    /// Whether `resetsAt` describes a *later* window than `previous`, rather
+    /// than the same one reported again.
+    ///
+    /// The provider recomputes `resets_at` on every request and the fractional
+    /// seconds it lands on are noise. Four polls six seconds apart, against a
+    /// window that was not moving, came back with `12:40:00.416`, `.789`,
+    /// `.152` and `.528` — so a strict `>` reads about half of all polls as a
+    /// rollover. That is how a window with three hours left on it announced
+    /// itself as renewed three times in one hour.
+    ///
+    /// A real rollover moves the reset forward by roughly a whole window, so
+    /// the bar is set at half of one: orders of magnitude above the jitter, and
+    /// still well below the smallest genuine jump. An unknown kind has no
+    /// length to measure against and is never called new — the same refusal to
+    /// guess a duration that `duration(forKind:)` makes.
+    public static func isNewWindow(resetsAt: Date, after previous: Date, kind: String) -> Bool {
+        guard let duration = duration(forKind: kind) else { return false }
+        return resetsAt.timeIntervalSince(previous) > duration / 2
+    }
+
     /// How far spending has run ahead of the clock, as a fraction.
     ///
     /// Positive means more of the budget is gone than of the window: 85% spent

@@ -7,6 +7,13 @@ import Foundation
 /// Adding a case here means adding content for it server-side — keep the set
 /// small and behavioural ("what is happening"), not technological ("which
 /// language"), so a card stays relevant regardless of stack.
+///
+/// The diversions at the bottom are the exception, and they are a different
+/// kind of thing: nothing an agent does resolves to them, so `CategoryResolver`
+/// never returns one and no automatic card is ever drawn from one. They exist
+/// only to be chosen from the card's topic picker. `isDiversion` is what keeps
+/// that true — see it for why the distinction has to be carried in the type
+/// rather than left to whoever writes the next call site.
 public enum TopicCategory: String, Codable, Sendable, CaseIterable {
     /// Reading source to build context.
     case reading
@@ -35,6 +42,34 @@ public enum TopicCategory: String, Codable, Sendable, CaseIterable {
     /// Nothing more specific could be determined.
     case generic
 
+    // MARK: - Diversions
+    //
+    // Not work topics. No tool activity resolves to these; they are reachable
+    // only by asking for them.
+
+    case gameOfThrones
+    case breakingBad
+    case strangerThings
+    case theOffice
+
+    /// Whether this topic is a deliberate break from work rather than a
+    /// description of it.
+    ///
+    /// It has to be a property of the topic rather than a rule at the call
+    /// site, because two very different places need the same answer: automatic
+    /// cards must never draw from one, and the Next button must not spill into
+    /// one either. Spilling is the subtle one — `advance` widens past the
+    /// current topic once it runs out, so without this, pressing Next during a
+    /// debugging session eventually answers with television.
+    public var isDiversion: Bool {
+        switch self {
+        case .gameOfThrones, .breakingBad, .strangerThings, .theOffice:
+            return true
+        default:
+            return false
+        }
+    }
+
     /// Stable slug used in backend URLs and cache filenames.
     public var slug: String { rawValue }
 
@@ -55,6 +90,10 @@ public enum TopicCategory: String, Codable, Sendable, CaseIterable {
         case .delegating:     return "Delegating"
         case .research:       return "Research"
         case .generic:        return "General"
+        case .gameOfThrones:  return "Game of Thrones"
+        case .breakingBad:    return "Breaking Bad"
+        case .strangerThings: return "Stranger Things"
+        case .theOffice:      return "The Office"
         }
     }
 }

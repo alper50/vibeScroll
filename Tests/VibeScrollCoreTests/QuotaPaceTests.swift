@@ -47,6 +47,59 @@ final class QuotaPaceTests: XCTestCase {
                         resetsAt: nil, isActive: true), now: now))
     }
 
+    // MARK: - Telling a new window from the same one reported again
+
+    /// The exact `resets_at` values four polls six seconds apart returned for a
+    /// session window that was three and a half hours from renewing. The reset
+    /// second never changed; only the fraction did, and it moved both ways.
+    private static let jitteredResets = [0.416619, 0.789570, 0.152791, 0.528715]
+
+    func testServerJitterIsNotARollover() {
+        // The bug this exists to prevent: a strict `>` on these dates reports a
+        // renewal on roughly half of all polls, so a window with three hours
+        // left announced itself as renewed three times in an hour.
+        let noon = Date(timeIntervalSince1970: 1_773_491_000)
+        let observed = Self.jitteredResets.map { noon.addingTimeInterval($0) }
+        for (previous, next) in zip(observed, observed.dropFirst()) {
+            XCTAssertFalse(
+                QuotaPace.isNewWindow(resetsAt: next, after: previous, kind: "session"),
+                "sub-second jitter is not a new window")
+        }
+    }
+
+    func testARealRolloverIsReported() {
+        let previous = Date(timeIntervalSince1970: 1_773_491_000)
+        XCTAssertTrue(QuotaPace.isNewWindow(
+            resetsAt: previous.addingTimeInterval(5 * 3600), after: previous, kind: "session"))
+        XCTAssertTrue(QuotaPace.isNewWindow(
+            resetsAt: previous.addingTimeInterval(7 * 24 * 3600), after: previous,
+            kind: "weekly_all"))
+    }
+
+    func testTheBarScalesWithTheWindow() {
+        // Four hours is most of a session window and nothing at all of a week,
+        // so the same gap has to answer differently for the two kinds.
+        let previous = Date(timeIntervalSince1970: 1_773_491_000)
+        let fourHoursOn = previous.addingTimeInterval(4 * 3600)
+        XCTAssertTrue(QuotaPace.isNewWindow(resetsAt: fourHoursOn, after: previous, kind: "session"))
+        XCTAssertFalse(QuotaPace.isNewWindow(resetsAt: fourHoursOn, after: previous, kind: "weekly_all"))
+    }
+
+    func testAWindowThatMovedBackwardIsNeverNew() {
+        let previous = Date(timeIntervalSince1970: 1_773_491_000)
+        XCTAssertFalse(QuotaPace.isNewWindow(
+            resetsAt: previous.addingTimeInterval(-5 * 3600), after: previous, kind: "session"))
+    }
+
+    func testAnUnknownKindIsNeverCalledNew() {
+        // No length to measure the jump against, and announcing a renewal that
+        // did not happen is the failure being fixed here.
+        let previous = Date(timeIntervalSince1970: 1_773_491_000)
+        XCTAssertFalse(QuotaPace.isNewWindow(
+            resetsAt: previous.addingTimeInterval(90 * 24 * 3600), after: previous,
+            kind: "monthly_something"))
+    }
+
     func testTightestPicksTheOneThatWillStopYou() {
         let windows = [
             window("weekly_all", 20, resetsIn: 84 * hour),

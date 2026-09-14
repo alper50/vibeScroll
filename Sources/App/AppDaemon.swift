@@ -314,7 +314,15 @@ final class AppDaemon: ObservableObject {
 
     private func prune() {
         store.prune(now: Date())
-        guard store.sorted != sessions else { return }
+        let current = store.sorted
+        guard current != sessions else {
+            // Nothing changed, but time did — and the ambient remarks are about
+            // how long nothing has changed *for*, which only a tick can notice.
+            // The rest of `refresh` is a function of the list itself and would
+            // be recomputing the same answer, so only this part runs.
+            CardController.shared.consider(sessions: current)
+            return
+        }
         refresh()
     }
 

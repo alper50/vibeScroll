@@ -131,4 +131,16 @@ final class QuotaTests: XCTestCase {
         // An unseen kind still shows something truthful.
         XCTAssertEqual(make("monthly_all").label, "Monthly All")
     }
+
+    func testEveryWindowKindThePaceArithmeticKnowsHasItsOwnLabel() {
+        // `weekly_sonnet` used to fall through to the generic fallback and
+        // render as "Weekly Sonnet" next to "Weekly (Opus)" — same idea, two
+        // spellings, one line apart in the same footer.
+        for kind in QuotaPace.weeklyKinds.union(QuotaPace.sessionKinds) {
+            let label = QuotaWindow(kind: kind, percentUsed: 0, severity: .normal,
+                                    resetsAt: nil, isActive: true).label
+            XCTAssertFalse(label.contains("_"), "\(kind) falls through to the raw identifier")
+            XCTAssertEqual(label, label.trimmingCharacters(in: .whitespaces))
+        }
+    }
 }

@@ -76,9 +76,17 @@ final class ContentStore: ObservableObject {
         inFlight = true
         defer { inFlight = false }
 
-        var request = URLRequest(url: baseURL.appendingPathComponent("v1/catalog"))
+        let url = baseURL.appendingPathComponent("v1/catalog")
+        var request = URLRequest(url: url)
         request.timeoutInterval = 10
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        // Signed when this build carries a secret, absent when it does not —
+        // and a server without secrets of its own does not ask for one, so the
+        // unconfigured pair works out of the box. See `ClientSignature` for
+        // what this does and does not buy.
+        for (field, value) in BackendCredential.headers(for: url) {
+            request.setValue(value, forHTTPHeaderField: field)
+        }
         // The catalogue is content-addressed by version; an unchanged one costs
         // a 304 instead of re-sending every card.
         if !force, !version.isEmpty {
@@ -94,7 +102,15 @@ final class ContentStore: ObservableObject {
                 return
             }
             guard (200..<300).contains(code) else {
-                lastError = "Backend returned HTTP \(code)"
+                // 401 is worth naming. Every other failure here is the backend
+                // being unreachable or unwell, which is temporary; this one is
+                // a build and a server that disagree about the secret, and it
+                // will never resolve itself. Said plainly, because a refresh
+                // failure is otherwise silent by design and this is the one
+                // that stays silent for ever.
+                lastError = code == 401
+                    ? "Backend rejected this build's signature (HTTP 401). Its secret does not match the server's."
+                    : "Backend returned HTTP \(code)"
                 return
             }
             let bundle = try JSONDecoder().decode(CardBundle.self, from: data)
