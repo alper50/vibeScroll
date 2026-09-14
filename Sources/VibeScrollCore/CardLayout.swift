@@ -47,17 +47,25 @@ public enum CardLayout {
     /// and five body lines, so it never needs more.
     public static let cardHeight: Double = 200
 
-    /// A list mode never shrinks below card height (no jarring shrink when
-    /// switching modes) and never grows past `maxListHeight` (a pet-sized
-    /// ambient panel must not become a full-screen list).
-    public static let minListHeight: Double = 200
+    /// A list never grows past this: a pet-sized ambient panel must not become
+    /// a full-screen list. There is deliberately no matching floor — see
+    /// `listHeight`.
     public static let maxListHeight: Double = 420
 
-    /// One session row, and the fixed chrome around the list (header, footer,
-    /// padding). Kept here so the view and the window can never disagree about
-    /// how much space a row takes.
+    /// One session row.
     public static let rowHeight: Double = 28
-    static let chrome: Double = 96
+
+    /// The fixed furniture around a list: the padding box, the header row, and
+    /// the gap between the header and the first row.
+    ///
+    /// Decomposed rather than carried as one tuned figure. The panel is sized
+    /// from this while the view is laid out from the same three parts, and a
+    /// single number nobody can derive is one that drifts the moment the header
+    /// changes — which shows up as a list that scrolls when it should fit.
+    public static let listPadding: Double = 14
+    public static let listHeaderHeight: Double = 20
+    public static let listSpacing: Double = 8
+    static var chrome: Double { listPadding * 2 + listHeaderHeight + listSpacing }
 
     /// The quota footer under the session list, when there is one to show.
     ///
@@ -66,8 +74,16 @@ public enum CardLayout {
     /// summary looks like a rendering bug rather than a full list.
     public static let quotaFooterHeight: Double = 22
 
-    /// Panel height for a list of `count` rows, clamped. Beyond roughly eleven
-    /// rows the list scrolls inside the capped panel.
+    /// Panel height for a list of `count` rows, capped. The panel is exactly as
+    /// tall as what is in it until it reaches `maxListHeight`, after which the
+    /// list scrolls inside it.
+    ///
+    /// There used to be a floor at card height, so that switching from a card
+    /// to the list never shrank the panel. It bought a smooth transition and
+    /// paid for it with the common case: one or two agents sat in a 200pt panel
+    /// that was mostly empty, every time. An ambient surface that is three
+    /// quarters nothing is worse than one that changes size when you ask it to
+    /// show you something else.
     ///
     /// One function for both list modes rather than one each: the session list
     /// and the topic picker are the same panel drawing the same rows, and two
@@ -75,7 +91,7 @@ public enum CardLayout {
     /// is — which shows up as the panel resizing when you switch between them.
     public static func listHeight(forCount count: Int, footer: Double = 0) -> Double {
         let content = Double(max(count, 1)) * rowHeight
-        return min(max(chrome + footer + content, minListHeight), maxListHeight)
+        return min(chrome + footer + content, maxListHeight)
     }
 
     /// What sits underneath the face.

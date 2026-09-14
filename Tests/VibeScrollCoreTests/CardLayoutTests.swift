@@ -3,11 +3,39 @@ import XCTest
 
 final class CardLayoutTests: XCTestCase {
 
-    func testASingleSessionStillFillsTheMinimumHeight() {
-        // Switching from card to list must never shrink the panel — a window
-        // that jumps smaller under the pointer reads as a glitch.
-        XCTAssertEqual(CardLayout.listHeight(forCount: 1), CardLayout.minListHeight)
-        XCTAssertEqual(CardLayout.listHeight(forCount: 0), CardLayout.minListHeight)
+    func testASmallListGetsASmallPanel() {
+        // The panel used to be floored at card height, so one agent sat in
+        // 200pt that was three quarters empty. It is now exactly as tall as
+        // what is in it.
+        XCTAssertEqual(CardLayout.listHeight(forCount: 1),
+                       CardLayout.chrome + CardLayout.rowHeight, accuracy: 0.001)
+        XCTAssertLessThan(CardLayout.listHeight(forCount: 1), CardLayout.cardHeight)
+    }
+
+    func testAnEmptyListIsSizedLikeAListOfOne() {
+        // "No active agents" needs a row's worth of space to sit in, and a
+        // panel that collapses to its header reads as broken rather than empty.
+        XCTAssertEqual(CardLayout.listHeight(forCount: 0),
+                       CardLayout.listHeight(forCount: 1))
+    }
+
+    func testChromeIsDerivedFromThePartsTheViewDraws() {
+        // One tuned number nobody can re-derive drifts the moment the header
+        // changes, and the symptom is a list that scrolls when it should fit.
+        XCTAssertEqual(CardLayout.chrome,
+                       CardLayout.listPadding * 2 + CardLayout.listHeaderHeight
+                           + CardLayout.listSpacing,
+                       accuracy: 0.001)
+    }
+
+    func testEveryRowCountBelowTheCapIsItsOwnHeight() {
+        // The point of the change: the panel tracks the session count instead
+        // of snapping to one of two sizes.
+        var heights: Set<Double> = []
+        for count in 1...13 {
+            heights.insert(CardLayout.listHeight(forCount: count))
+        }
+        XCTAssertEqual(heights.count, 13, "some counts share a height")
     }
 
     func testHeightGrowsWithTheSessionCount() {
@@ -19,11 +47,25 @@ final class CardLayoutTests: XCTestCase {
 
     func testHeightIsCappedSoTheAmbientPanelNeverTakesOverTheScreen() {
         XCTAssertEqual(CardLayout.listHeight(forCount: 50), CardLayout.maxListHeight)
-        XCTAssertEqual(CardLayout.listHeight(forCount: 12), CardLayout.maxListHeight)
+        XCTAssertEqual(CardLayout.listHeight(forCount: 100), CardLayout.maxListHeight)
+        // Every count on the way up stays under it, so the cap is a ceiling
+        // rather than the height the panel usually has.
+        for count in 1...12 {
+            XCTAssertLessThan(CardLayout.listHeight(forCount: count), CardLayout.maxListHeight)
+        }
+    }
+
+    func testTheQuotaFooterCannotPushAFullListPastTheCap() {
+        for count in [11, 13, 40] {
+            XCTAssertLessThanOrEqual(
+                CardLayout.panelHeight(for: .sessions(count: count, hasQuota: true)),
+                CardLayout.maxListHeight)
+        }
     }
 
     func testNegativeCountIsTreatedAsOne() {
-        XCTAssertEqual(CardLayout.listHeight(forCount: -3), CardLayout.minListHeight)
+        XCTAssertEqual(CardLayout.listHeight(forCount: -3),
+                       CardLayout.listHeight(forCount: 1))
     }
 
     // MARK: - Panel composition
@@ -100,18 +142,26 @@ final class CardLayoutTests: XCTestCase {
         }
     }
 
-    func testEveryTopicFitsWithoutTheClampDoingTheWork() {
-        // Thirteen is every category there is, so the picker at its fullest
-        // must not be the case that hits the ceiling — a list that is always
-        // capped cannot tell the user it has more to scroll.
+    func testTheFullPickerReachesTheCapAndScrolls() {
+        // Seventeen topics no longer fit: the work categories plus the
+        // diversions come to more rows than a 420pt panel holds, so the last of
+        // them are behind a scroll. That is the cap doing its job rather than a
+        // regression — the alternative is an ambient panel half the screen tall.
         let full = CardLayout.panelHeight(for: .categories(count: TopicCategory.allCases.count))
-        XCTAssertLessThanOrEqual(full, CardLayout.maxListHeight)
+        XCTAssertEqual(full, CardLayout.maxListHeight)
+        XCTAssertGreaterThan(
+            CardLayout.chrome + Double(TopicCategory.allCases.count) * CardLayout.rowHeight,
+            CardLayout.maxListHeight,
+            "the picker would fit — this test is describing a cap that no longer binds")
     }
 
-    func testThePickerIsTallerThanACard() {
-        // It replaces the card in the same panel; shrinking to open a list
-        // reads as the panel breaking rather than as a mode change.
-        XCTAssertGreaterThanOrEqual(CardLayout.panelHeight(for: .categories(count: 5)),
-                                    CardLayout.panelHeight(for: .card))
+    func testThePickerIsSizedToItsRowsLikeAnyOtherList() {
+        // It used to be floored at card height so opening it never shrank the
+        // panel. Sizing to content won that trade: a five-topic picker in a
+        // 200pt panel was mostly empty panel.
+        XCTAssertEqual(CardLayout.panelHeight(for: .categories(count: 5)),
+                       CardLayout.chrome + 5 * CardLayout.rowHeight, accuracy: 0.001)
+        XCTAssertLessThan(CardLayout.panelHeight(for: .categories(count: 5)),
+                          CardLayout.cardHeight)
     }
 }
