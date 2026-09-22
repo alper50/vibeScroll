@@ -11,7 +11,7 @@ import VibeScrollCore
 struct FaceWindowView: View {
     @ObservedObject private var face = FaceModel.shared
     @ObservedObject private var controller = CardController.shared
-    @StateObject private var blink = BlinkModel()
+    @ObservedObject private var blink = BlinkModel.shared
     @ObservedObject private var reaction = ReactionModel.shared
     @ObservedObject private var presentation = FaceWindowController.shared.presentation
     @State private var hovering = false
@@ -50,8 +50,11 @@ struct FaceWindowView: View {
         }
         .frame(width: CardLayout.faceWindowWidth, height: CardLayout.faceWindowHeight,
                alignment: .top)
-        .onAppear { blink.start() }
-        .onDisappear { blink.stop() }
+        // Both stop with the window. A face nobody can see has no reason to
+        // keep a timer alive, which is the whole reason either of these is
+        // affordable — they sleep for seconds and animate for milliseconds.
+        .onAppear { blink.start(); GazeModel.shared.startIdleMotion() }
+        .onDisappear { blink.stop(); GazeModel.shared.stopIdleMotion() }
     }
 
     private var blob: some View {

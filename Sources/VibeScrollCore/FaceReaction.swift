@@ -118,6 +118,14 @@ public struct FaceImpulse: Equatable, Sendable {
     public var total: TimeInterval {
         hasAfterglow ? rise + hold + decay + linger + fall : rise + hold + fall
     }
+
+    /// The furthest past full strength a reaction may be carried.
+    ///
+    /// The player animates `strength` with a spring, which overshoots on its
+    /// way to 1. Allowing a quarter of the impulse again is enough to read as
+    /// muscle; more starts reading as a performance, which is the thing these
+    /// are explicitly not.
+    public static let maxOvershoot: Double = 1.25
 }
 
 public extension FaceExpression {
@@ -129,7 +137,12 @@ public extension FaceExpression {
     /// not open the eyes past 1 and then come back down from somewhere the
     /// face was never at.
     func applying(_ impulse: FaceImpulse, strength: Double) -> FaceExpression {
-        let amount = min(max(strength, 0), 1)
+        // Overshoot is allowed past the peak, because a muscle does not arrive
+        // at its target and stop — it passes it and comes back, and a reaction
+        // that lands exactly on its mark reads as interpolation. The final
+        // `clamped()` still keeps the face in range; this ceiling is only so a
+        // mis-tuned spring cannot turn a flinch into a cartoon.
+        let amount = min(max(strength, 0), FaceImpulse.maxOvershoot)
         guard amount > 0 else { return self }
         var result = self
         result.browAngle += impulse.browAngle * amount

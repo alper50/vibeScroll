@@ -20,7 +20,19 @@ final class ContentStore: ObservableObject {
     @Published private(set) var lastError: String?
 
     private static let baseURLKey = "vibescroll.backendURL"
-    private static let defaultBaseURL = "http://127.0.0.1:8787"
+
+    /// The hosted catalogue.
+    ///
+    /// **https, and not by preference.** The bundle ships
+    /// `NSAllowsLocalNetworking`, which permits plain HTTP to loopback and the
+    /// local network and nothing else, so App Transport Security refuses an
+    /// `http://` origin before the request leaves the machine. A refused
+    /// refresh is silent by design here, so the symptom would be an app with no
+    /// cards and no explanation — the worst shape a bug can take in this file.
+    ///
+    /// Run the backend locally by pointing Settings → Content at
+    /// `http://127.0.0.1:8787`, which ATS still allows.
+    private static let defaultBaseURL = "https://vibescroll-backend-vibescroll.up.railway.app"
     private static let refreshInterval: TimeInterval = 6 * 3600
 
     private var refreshTimer: Timer?

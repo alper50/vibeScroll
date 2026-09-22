@@ -31,9 +31,17 @@ final class ReactionModel: ObservableObject {
     func note(transition before: AgentState?, to after: AgentState) {
         guard before != after else { return }
         switch after {
-        case .waiting: fire(.noticed)
-        case .done:    fire(.pleased)
-        default:       break
+        case .waiting:
+            fire(.noticed)
+            // People blink when something startles them, and the lid arriving
+            // before the eyes go wide is most of what makes a startle read as
+            // one. Fired here rather than inside `fire`, because only this
+            // reaction is a startle — a turn finishing is good news, not a jolt.
+            BlinkModel.shared.blinkNow()
+        case .done:
+            fire(.pleased)
+        default:
+            break
         }
     }
 
@@ -53,7 +61,13 @@ final class ReactionModel: ObservableObject {
         let impulse = reaction.impulse
         self.impulse = impulse
 
-        withAnimation(.easeOut(duration: impulse.rise)) { strength = 1 }
+        // A spring rather than an ease, so the impulse passes its mark and
+        // comes back. A muscle does not arrive at a target and stop; an ease
+        // does, which is why the old version read as interpolation. The
+        // overshoot is bounded by `FaceImpulse.maxOvershoot`, not by this curve.
+        withAnimation(.spring(response: impulse.rise * 1.7, dampingFraction: 0.62)) {
+            strength = 1
+        }
 
         let peakEnds = impulse.rise + impulse.hold
         if impulse.hasAfterglow {

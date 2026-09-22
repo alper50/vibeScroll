@@ -121,7 +121,7 @@ struct SetupChecklist: View {
                      title: "Point at a card backend",
                      detail: content.count > 0
                         ? "\(content.count) cards ready."
-                        : "No cards yet. The default backend runs on this machine.",
+                        : "No cards yet. Check the connection under Content.",
                      jump: .content)
                 step(done: loginItem.state.isOn,
                      title: "Start at login",
@@ -444,7 +444,8 @@ struct ContentSettingsView: View {
     var body: some View {
         Form {
             Section("Backend") {
-                TextField("Origin", text: $draftURL, prompt: Text("http://127.0.0.1:8787"))
+                TextField("Origin", text: $draftURL,
+                          prompt: Text("https://vibescroll-backend-vibescroll.up.railway.app"))
                     .textFieldStyle(.roundedBorder)
                 HStack {
                     Button("Save & refresh") { store.setBaseURL(draftURL) }

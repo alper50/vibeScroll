@@ -54,7 +54,8 @@ deployed, rebuilt or replaced without touching the other.
 
 ## Running it
 
-**Backend** — see [vibeScroll-backend](../vibeScroll-backend):
+**Backend** — the app ships pointing at the hosted catalogue and needs nothing
+set up. To run your own, see [vibeScroll-backend](../vibeScroll-backend):
 
 ```bash
 cd ../vibeScroll-backend
@@ -62,8 +63,12 @@ npm install
 npm start            # http://127.0.0.1:8787
 ```
 
-The app defaults to that address and can be pointed elsewhere in
-Settings → Content.
+Then point Settings → Content at that address.
+
+The default origin is **https**, and not by preference: the bundle ships
+`NSAllowsLocalNetworking`, so App Transport Security allows plain HTTP to
+loopback and the local network and refuses it anywhere else. Loopback is still
+permitted, which is why the local address above works unchanged.
 
 **App**
 

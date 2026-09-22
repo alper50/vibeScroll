@@ -98,12 +98,36 @@ final class FaceReactionTests: XCTestCase {
                                    fall: 0.1).hasAfterglow)
     }
 
+    func testAnImpulseMayOvershootItsPeak() {
+        // A muscle passes its target and comes back; an ease arrives and stops,
+        // which is why the old rise read as interpolation. The spring that
+        // drives `strength` goes past 1, and the offsets have to follow it
+        // there or the overshoot is clipped away before it is ever drawn.
+        let mood = FaceExpression(browAngle: 0, eyeOpenness: 0.5, mouthCurve: 0)
+        let impulse = FaceImpulse(browAngle: 0.4, eyeOpenness: 0, mouthCurve: 0,
+                                  rise: 0.1, hold: 0.1, fall: 0.1)
+        XCTAssertGreaterThan(mood.applying(impulse, strength: 1.2).browAngle,
+                             mood.applying(impulse, strength: 1).browAngle)
+    }
+
+    func testOvershootHasACeiling() {
+        // Bounded so a mis-tuned spring cannot turn a flinch into a cartoon.
+        let mood = FaceExpression(browAngle: 0, eyeOpenness: 0.5, mouthCurve: 0)
+        let impulse = FaceImpulse(browAngle: 0.4, eyeOpenness: 0, mouthCurve: 0,
+                                  rise: 0.1, hold: 0.1, fall: 0.1)
+        XCTAssertEqual(mood.applying(impulse, strength: 99).browAngle,
+                       mood.applying(impulse, strength: FaceImpulse.maxOvershoot).browAngle,
+                       accuracy: 0.0001)
+        XCTAssertLessThan(FaceImpulse.maxOvershoot, 1.5)
+        XCTAssertGreaterThan(FaceImpulse.maxOvershoot, 1)
+    }
+
     func testAReactionCannotPushTheFaceOutOfRange() {
         // A startle on an already wide-eyed face must not open the eyes past 1
         // and then come back down from somewhere the face was never at.
         let alert = FaceMood.base(for: .waiting)
         for reaction in FaceReaction.allCases {
-            for strength in [0.25, 0.5, 1.0] {
+            for strength in [0.25, 0.5, 1.0, FaceImpulse.maxOvershoot, 99.0] {
                 let face = alert.applying(reaction.impulse, strength: strength)
                 XCTAssertTrue((0...1).contains(face.eyeOpenness))
                 XCTAssertTrue((-1...1).contains(face.browAngle))

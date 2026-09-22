@@ -46,10 +46,70 @@ final class GazeModel: ObservableObject {
     func beginTracking() {
         guard CardController.shared.followsPointer, !prefersReducedMotion else { return }
         guard timer == nil else { return }
+        stopIdleMotion()
         timer = Timer.scheduledTimer(withTimeInterval: Self.interval, repeats: true) { _ in
             Task { @MainActor in GazeModel.shared.sample() }
         }
         sample()
+    }
+
+    // MARK: - Idle saccades
+
+    /// Eyes parked dead centre between blinks are the single thing that makes
+    /// the face read as a diagram. Real eyes fixate, jump, and fixate again —
+    /// which is lucky, because a smooth drift needs a continuous animation and
+    /// this app measured one of those at twelve times its whole idle cost. A
+    /// jump is an event, so this rides the same pattern the blink does: one
+    /// timer that sleeps for seconds and animates for seventy milliseconds.
+    ///
+    /// Gated on the same switch as pointer-following. Somebody who turned that
+    /// off wanted still eyes, and giving them moving ones anyway because these
+    /// are technically a different feature would be answering a question they
+    /// did not ask.
+    private var idleTimer: Timer?
+
+    func startIdleMotion() {
+        guard idleTimer == nil, timer == nil else { return }
+        guard CardController.shared.followsPointer, !prefersReducedMotion else { return }
+        scheduleSaccade()
+    }
+
+    func stopIdleMotion() {
+        idleTimer?.invalidate()
+        idleTimer = nil
+    }
+
+    private var energy: Double { FaceModel.shared.expression.energy }
+
+    private func scheduleSaccade() {
+        let delay = SaccadeRhythm.interval(energy: energy, jitter: Double.random(in: 0...1))
+        idleTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { _ in
+            Task { @MainActor in GazeModel.shared.saccade() }
+        }
+    }
+
+    private func saccade() {
+        // The pointer took over between the schedule and the fire.
+        guard timer == nil else { stopIdleMotion(); return }
+        defer { scheduleSaccade() }
+
+        // A face this spent has its eyes shut, and flicking them is not
+        // resting. Same threshold the blink sleeps at, so the two stop together.
+        guard !SaccadeRhythm.sleeps(atEnergy: energy) else {
+            if direction != .zero {
+                withAnimation(.easeOut(duration: 0.4)) { direction = .zero }
+            }
+            return
+        }
+
+        let next = SaccadeRhythm.target(
+            x: Double.random(in: 0...1),
+            y: Double.random(in: 0...1),
+            recentre: Double.random(in: 0...1))
+        guard next != direction else { return }
+        // Linear and fast. A saccade is the quickest movement a body makes, and
+        // easing one reads as the eye being dragged rather than flicking.
+        withAnimation(.linear(duration: SaccadeRhythm.moveDuration)) { direction = next }
     }
 
     private func sample() {
@@ -74,10 +134,14 @@ final class GazeModel: ObservableObject {
     func rest() {
         timer?.invalidate()
         timer = nil
-        guard direction != .zero else { return }
-        withAnimation(prefersReducedMotion ? nil : .easeOut(duration: 0.25)) {
-            direction = .zero
+        if direction != .zero {
+            withAnimation(prefersReducedMotion ? nil : .easeOut(duration: 0.25)) {
+                direction = .zero
+            }
         }
+        // Back to idling. Skipped when the setting is what turned tracking off:
+        // `startIdleMotion` checks it too, so this stays one decision.
+        startIdleMotion()
     }
 
     private func clamp(_ value: CGFloat) -> CGFloat { min(max(value, -1), 1) }

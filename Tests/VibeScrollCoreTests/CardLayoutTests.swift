@@ -164,4 +164,78 @@ final class CardLayoutTests: XCTestCase {
         XCTAssertLessThan(CardLayout.panelHeight(for: .categories(count: 5)),
                           CardLayout.cardHeight)
     }
+
+    // MARK: - Which windows are up
+
+    private func visibility(
+        _ content: CardLayout.PanelContent, sessions: Bool = false, card: Bool = false,
+        faceWhenIdle: Bool = true, suppressed: Bool = false
+    ) -> CardLayout.PanelVisibility {
+        CardLayout.visibility(content: content, hasSessions: sessions, hasCard: card,
+                              showsFaceWhenIdle: faceWhenIdle, suppressed: suppressed)
+    }
+
+    func testTheCardIsNeverUpWithoutTheFace() {
+        // The bug this exists to prevent. The card is placed against the face's
+        // frame, so one without the other falls back to the screen corner and
+        // sits there orphaned — having visibly jumped to get there.
+        let contents: [CardLayout.PanelContent] = [
+            .none, .card, .moment,
+            .sessions(count: 0, hasQuota: false), .sessions(count: 4, hasQuota: true),
+            .categories(count: 17),
+        ]
+        for content in contents {
+            for sessions in [true, false] {
+                for card in [true, false] {
+                    for idle in [true, false] {
+                        for suppressed in [true, false] {
+                            let v = visibility(content, sessions: sessions, card: card,
+                                               faceWhenIdle: idle, suppressed: suppressed)
+                            if v.card {
+                                XCTAssertTrue(v.face, "card without a face: \(content)")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    func testGoingIdleWithTheSessionListOpenTakesBothAway() {
+        // Exactly the reported case: the face leaves because nothing is
+        // running and the setting says not to linger, and the list used to
+        // stay behind on its own.
+        let v = visibility(.sessions(count: 0, hasQuota: false), faceWhenIdle: false)
+        XCTAssertFalse(v.face)
+        XCTAssertFalse(v.card)
+    }
+
+    func testAnIdleFaceThatStaysKeepsWhateverIsUnderIt() {
+        // With the setting on, the face is still information — and a card that
+        // is still saying something goes on hanging off it.
+        let v = visibility(.card, card: true, faceWhenIdle: true)
+        XCTAssertTrue(v.face)
+        XCTAssertTrue(v.card)
+    }
+
+    func testACardAloneIsEnoughToKeepTheFaceOut() {
+        // No agents and no idle face, but something on screen worth reading:
+        // the face has to be there for the card to hang off.
+        let v = visibility(.card, sessions: false, card: true, faceWhenIdle: false)
+        XCTAssertTrue(v.face)
+        XCTAssertTrue(v.card)
+    }
+
+    func testNothingToShowMeansNoCardEvenWithAFace() {
+        let v = visibility(.none, sessions: true, faceWhenIdle: true)
+        XCTAssertTrue(v.face)
+        XCTAssertFalse(v.card)
+    }
+
+    func testDismissingByHandTakesBoth() {
+        let v = visibility(.sessions(count: 4, hasQuota: false), sessions: true,
+                           card: true, faceWhenIdle: true, suppressed: true)
+        XCTAssertFalse(v.face)
+        XCTAssertFalse(v.card)
+    }
 }

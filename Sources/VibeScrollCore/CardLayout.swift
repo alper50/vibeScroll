@@ -132,6 +132,38 @@ public enum CardLayout {
         }
     }
 
+    /// Which of the two windows belong on screen.
+    public struct PanelVisibility: Equatable, Sendable {
+        public let face: Bool
+        public let card: Bool
+
+        public init(face: Bool, card: Bool) {
+            self.face = face
+            self.card = card
+        }
+    }
+
+    /// The rule for both windows, in one place.
+    ///
+    /// The invariant that matters, and the one that was missing: **the card is
+    /// never up without the face.** The card has no position of its own — it is
+    /// placed against the face's frame — so a visible card with no face falls
+    /// back to the screen corner and sits there orphaned, having visibly jumped
+    /// to get there. It used to be possible: the card's own gate asked only
+    /// whether the panel had been dismissed by hand, while the face's asked
+    /// about sessions and settings, so the two could disagree.
+    ///
+    /// Pure so that disagreement is a failing test rather than something you
+    /// find by going idle with the session list open.
+    public static func visibility(
+        content: PanelContent, hasSessions: Bool, hasCard: Bool,
+        showsFaceWhenIdle: Bool, suppressed: Bool
+    ) -> PanelVisibility {
+        guard !suppressed else { return PanelVisibility(face: false, card: false) }
+        let face = showsFaceWhenIdle || hasSessions || hasCard
+        return PanelVisibility(face: face, card: face && content != .none)
+    }
+
     /// Where the card panel sits so it reads as coming out of the face.
     ///
     /// Above it by preference, which is also where the face usually has room:

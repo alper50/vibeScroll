@@ -45,8 +45,54 @@ public enum BlinkRhythm {
     /// How long a single blink takes, close and open together. A tired lid is
     /// slower to lift, which reads as weariness without touching the mood.
     public static func duration(energy: Double) -> TimeInterval {
+        closeDuration(energy: energy) + openDuration(energy: energy)
+    }
+
+    /// How much of a blink is the lid going down.
+    ///
+    /// A lid drops faster than it lifts — roughly one part closing to two parts
+    /// opening. Splitting the total evenly is what anyone writes first, and it
+    /// is the single thing that makes a blink read as a shutter rather than an
+    /// eyelid. The asymmetry costs nothing: it is the same animation with the
+    /// halves sized differently.
+    static let closeShare: Double = 0.34
+
+    private static func total(energy: Double) -> TimeInterval {
         0.26 - 0.12 * clamped(energy)
     }
+
+    public static func closeDuration(energy: Double) -> TimeInterval {
+        total(energy: energy) * closeShare
+    }
+
+    public static func openDuration(energy: Double) -> TimeInterval {
+        total(energy: energy) * (1 - closeShare)
+    }
+
+    /// How often a blink comes as a pair.
+    ///
+    /// People double-blink constantly. Without it the rhythm reads as metronomic
+    /// even with the interval jittered, because every blink is the same shape —
+    /// jitter varies the gaps, this varies the blinks themselves.
+    static let doubleChance: Double = 0.18
+
+    /// Gap between the two, lid-open to lid-closing again.
+    public static let doubleGap: TimeInterval = 0.11
+
+    /// Whether this blink is a pair. `sample` is a 0...1 the caller supplies,
+    /// for the same reason `interval` takes its jitter: a rhythm decided by a
+    /// private random number is one that gets tuned by guesswork.
+    public static func isDouble(sample: Double) -> Bool {
+        clamped(sample) < doubleChance
+    }
+
+    /// How far into a reaction the lid stops interrupting.
+    ///
+    /// Nobody blinks mid-startle: the eyes are doing something, and a lid
+    /// arriving across it reads as a glitch rather than as two things at once.
+    /// Only the *scheduled* blink answers to this — a startle fires its own,
+    /// which is part of the startle rather than an interruption of it.
+    public static let suppressedAboveReaction: Double = 0.3
 
     private static func clamped(_ value: Double) -> Double { min(max(value, 0), 1) }
 }

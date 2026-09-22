@@ -83,8 +83,15 @@ final class CardController: ObservableObject {
         didSet {
             UserDefaults.standard.set(followsPointer, forKey: Self.followsPointerKey)
             // Turning it off with the pointer already on the face would
-            // otherwise leave the eyes stuck where they last looked.
-            if !followsPointer { GazeModel.shared.rest() }
+            // otherwise leave the eyes stuck where they last looked. It governs
+            // the idle flicks too: somebody who asked for still eyes meant
+            // still, not "still except when you are not looking".
+            if followsPointer {
+                GazeModel.shared.startIdleMotion()
+            } else {
+                GazeModel.shared.stopIdleMotion()
+                GazeModel.shared.rest()
+            }
         }
     }
 
@@ -113,7 +120,16 @@ final class CardController: ObservableObject {
         // A first session brings the panel back after everything went quiet;
         // the last one leaving takes it away again.
         if wasEmpty != sessions.isEmpty {
-            if !sessions.isEmpty { suppressed = false }
+            if !sessions.isEmpty {
+                suppressed = false
+            } else if mode == .sessions {
+                // The list has nothing left to list. `openSessions` already
+                // refuses to open an empty one, so leaving this one up would
+                // contradict it — and "No active agents" is not what somebody
+                // who asked to see their agents wants left on screen. Back to
+                // the card if there is one, closed if there is not.
+                mode = .card
+            }
             syncPanel()
         } else if mode == .sessions, sessions.count != previousCount {
             // Otherwise only resize when the row count actually changed: the
@@ -446,10 +462,16 @@ final class CardController: ObservableObject {
         }
     }
 
-    /// Whether the face belongs on screen right now.
-    private var shouldShowFace: Bool {
-        guard !suppressed else { return false }
-        return showsFaceWhenIdle || !sessions.isEmpty || current != nil
+    /// Which windows belong on screen. The rule itself is in `CardLayout`, so
+    /// the one invariant that broke here — a card with no face under it — is a
+    /// test rather than something you meet by going idle with the list open.
+    private var visibility: CardLayout.PanelVisibility {
+        CardLayout.visibility(
+            content: panelContent,
+            hasSessions: !sessions.isEmpty,
+            hasCard: current != nil,
+            showsFaceWhenIdle: showsFaceWhenIdle,
+            suppressed: suppressed)
     }
 
     /// The single place either window is shown or hidden.
@@ -458,11 +480,10 @@ final class CardController: ObservableObject {
     /// is up whenever there is an agent to watch, while the card is occasional
     /// and only up when it has something in it.
     private func syncPanel() {
-        FaceWindowController.shared.setVisible(shouldShowFace)
+        let windows = visibility
+        FaceWindowController.shared.setVisible(windows.face)
 
-        // The card is occasional whatever the face is doing: it appears when it
-        // has something in it and leaves when it does not.
-        guard !suppressed, panelContent != .none else {
+        guard windows.card else {
             CardWindowController.shared.hide()
             return
         }
