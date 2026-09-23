@@ -35,7 +35,7 @@ final class LoginItem: ObservableObject {
         case .enabled:          state = .on
         case .requiresApproval: state = .blockedByUser
         case .notRegistered:    state = .off
-        case .notFound:         state = .unavailable("Login item not found for this build.")
+        case .notFound:         state = .unavailable(String(localized: "Login item not found for this build."))
         @unknown default:       state = .off
         }
     }

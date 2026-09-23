@@ -101,8 +101,9 @@ final class UsageProbe: ObservableObject {
             if snapshot.isExhausted, !wasExhausted {
                 SoundSettings.shared.play(.quota)
                 NotificationManager.shared.notify(
-                    title: "Claude quota exhausted",
-                    body: snapshot.tightest.map(Self.resetLine) ?? "Waiting for the window to reset")
+                    title: String(localized: "Claude quota exhausted"),
+                    body: snapshot.tightest.map(Self.resetLine)
+                        ?? String(localized: "Waiting for the window to reset"))
             }
             wasExhausted = snapshot.isExhausted
         case .failure(let error):
@@ -111,10 +112,11 @@ final class UsageProbe: ObservableObject {
     }
 
     private static func resetLine(_ window: QuotaWindow) -> String {
-        guard let resetsAt = window.resetsAt else { return "\(window.label) limit reached" }
+        guard let resetsAt = window.resetsAt else { return String(localized: "\(window.label) limit reached") }
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .full
-        return "\(window.label) resets \(formatter.localizedString(for: resetsAt, relativeTo: Date()))"
+        let relative = formatter.localizedString(for: resetsAt, relativeTo: Date())
+        return String(localized: "\(window.label) resets \(relative)")
     }
 
     // MARK: - Fetching
@@ -125,7 +127,7 @@ final class UsageProbe: ObservableObject {
 
     private nonisolated static func fetch() async -> Result<QuotaSnapshot, ProbeError> {
         guard let token = accessToken() else {
-            return .failure(ProbeError(message: "No Claude Code sign-in found."))
+            return .failure(ProbeError(message: String(localized: "No Claude Code sign-in found.")))
         }
         var request = URLRequest(url: URL(string: "https://api.anthropic.com/api/oauth/usage")!)
         request.timeoutInterval = 10
@@ -142,12 +144,12 @@ final class UsageProbe: ObservableObject {
                 // 401 is the common one: the stored token expired because the
                 // CLI has not run in a while.
                 return .failure(ProbeError(message: status == 401
-                    ? "Claude sign-in expired — run Claude Code once to refresh it."
-                    : "Quota check failed (HTTP \(status))."))
+                    ? String(localized: "Claude sign-in expired — run Claude Code once to refresh it.")
+                    : String(localized: "Quota check failed (HTTP \(status)).")))
             }
             guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let snapshot = ClaudeUsageParser.parse(json, now: Date()) else {
-                return .failure(ProbeError(message: "Quota response could not be read."))
+                return .failure(ProbeError(message: String(localized: "Quota response could not be read.")))
             }
             return .success(snapshot)
         } catch {

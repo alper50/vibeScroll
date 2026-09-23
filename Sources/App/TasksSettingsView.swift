@@ -134,14 +134,14 @@ struct TasksSettingsView: View {
     }
 
     static func describe(_ report: TaskQueueStore.CleanupReport) -> String {
-        var parts = ["Removed \(report.removed)"]
+        var parts = [String(localized: "Removed \(report.removed)")]
         // Named rather than counted silently: a bulk button is the worst place
         // to discard something that exists nowhere else, so the ones it left
         // behind have to be visible.
         if report.blocked > 0 {
-            parts.append("\(report.blocked) kept \u{2014} uncommitted work, delete individually")
+            parts.append(String(localized: "\(report.blocked) kept \u{2014} uncommitted work, delete individually"))
         }
-        if report.failed > 0 { parts.append("\(report.failed) failed") }
+        if report.failed > 0 { parts.append(String(localized: "\(report.failed) failed")) }
         return parts.joined(separator: ". ") + "."
     }
 
@@ -154,12 +154,12 @@ struct TasksSettingsView: View {
                 HStack(spacing: 4) {
                     Text(ProjectPath.displayName(task.projectPath))
                     if let failure = task.failure {
-                        Text("\u{00B7}")
+                        Text(verbatim: "\u{00B7}")
                         Text(TaskRunner.label(for: failure))
                     }
                     if let branch = task.worktreeName {
-                        Text("\u{00B7}")
-                        Text("vibescroll/\(branch)").monospaced()
+                        Text(verbatim: "\u{00B7}")
+                        Text(verbatim: "vibescroll/\(branch)").monospaced()
                     }
                 }
                 .font(.system(size: 10))
@@ -256,15 +256,15 @@ struct TasksSettingsView: View {
     private var executableCaption: String {
         if !executableOverride.isEmpty {
             return FileManager.default.isExecutableFile(atPath: executableOverride)
-                ? "Using this path."
-                : "Not an executable file \u{2014} tasks cannot start."
+                ? String(localized: "Using this path.")
+                : String(localized: "Not an executable file \u{2014} tasks cannot start.")
         }
         guard let found = TaskRunner.discoverExecutable() else {
             // The common install ships inside the VS Code extension and is not
             // on PATH, so "not found" is worth explaining rather than asserting.
-            return "Claude Code was not found automatically. Set its path here \u{2014} it usually lives inside the VS Code extension, not on your PATH."
+            return String(localized: "Claude Code was not found automatically. Set its path here \u{2014} it usually lives inside the VS Code extension, not on your PATH.")
         }
-        return "Found automatically: \(found)"
+        return String(localized: "Found automatically: \(found)")
     }
 
     private func chooseExecutable() {

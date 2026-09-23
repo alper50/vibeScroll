@@ -46,7 +46,7 @@ final class StatusBarController {
         let menu = NSMenu()
 
         if latest.isEmpty {
-            let empty = NSMenuItem(title: "No active agents", action: nil, keyEquivalent: "")
+            let empty = NSMenuItem(title: String(localized: "No active agents"), action: nil, keyEquivalent: "")
             empty.isEnabled = false
             menu.addItem(empty)
         } else {
@@ -57,19 +57,21 @@ final class StatusBarController {
                 menu.addItem(entry)
             }
             menu.addItem(.separator())
-            menu.addItem(NSMenuItem(title: "Clear sessions",
+            menu.addItem(NSMenuItem(title: String(localized: "Clear sessions"),
                                     action: #selector(clearSessions), keyEquivalent: ""))
             menu.items.last?.target = self
         }
 
         menu.addItem(.separator())
-        let list = NSMenuItem(title: "Show all sessions\u{2026}",
+        let list = NSMenuItem(title: String(localized: "Show all sessions\u{2026}"),
                               action: #selector(openSessions), keyEquivalent: "")
         list.target = self
         list.isEnabled = !latest.isEmpty
         menu.addItem(list)
 
-        let toggle = NSMenuItem(title: CardController.shared.enabled ? "Pause cards" : "Resume cards",
+        let toggle = NSMenuItem(title: CardController.shared.enabled
+                                    ? String(localized: "Pause cards")
+                                    : String(localized: "Resume cards"),
                                 action: #selector(toggleCards), keyEquivalent: "")
         toggle.target = self
         menu.addItem(toggle)
@@ -83,7 +85,7 @@ final class StatusBarController {
         // task* here, which this switch has nothing to do with — turning it
         // off stops the queue starting anything new and leaves whatever is
         // already running alone.
-        let autopilot = NSMenuItem(title: "Run queued tasks automatically",
+        let autopilot = NSMenuItem(title: String(localized: "Run queued tasks automatically"),
                                    action: #selector(toggleAutopilot), keyEquivalent: "")
         autopilot.target = self
         autopilot.state = TaskRunner.shared.autopilot ? .on : .off
@@ -98,17 +100,17 @@ final class StatusBarController {
 
         // The panel is ambient rather than dismissible-forever: hiding it is a
         // pause, and the next agent to start brings it back.
-        let panel = NSMenuItem(title: "Hide panel", action: #selector(togglePanel), keyEquivalent: "")
+        let panel = NSMenuItem(title: String(localized: "Hide panel"), action: #selector(togglePanel), keyEquivalent: "")
         panel.target = self
         menu.addItem(panel)
 
-        let settings = NSMenuItem(title: "Settings\u{2026}",
+        let settings = NSMenuItem(title: String(localized: "Settings\u{2026}"),
                                   action: #selector(openSettings), keyEquivalent: ",")
         settings.target = self
         menu.addItem(settings)
 
         menu.addItem(.separator())
-        let quit = NSMenuItem(title: "Quit vibeScroll", action: #selector(quit), keyEquivalent: "q")
+        let quit = NSMenuItem(title: String(localized: "Quit vibeScroll"), action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
 

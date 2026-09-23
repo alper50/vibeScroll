@@ -122,7 +122,7 @@ struct InfoCardView: View {
             // it is the obvious place to ask for a different one.
             Button { controller.showCategories() } label: {
                 HStack(spacing: 3) {
-                    Text(card.category.fallbackLabel.uppercased())
+                    Text(verbatim: card.category.label.uppercased())
                     Image(systemName: "chevron.down")
                         .font(.system(size: 7, weight: .bold))
                         .opacity(0.7)
@@ -135,16 +135,7 @@ struct InfoCardView: View {
                 .contentShape(Capsule())
             }
             .buttonStyle(.plain)
-            .help("Browse another topic")
-
-            // A difficulty on a television fact is a label with nothing behind
-            // it. Diversions carry the field because the decoder requires one;
-            // that is not a reason to put it on screen.
-            if !card.category.isDiversion {
-                Text(card.level.rawValue)
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(.tertiary)
-            }
+            .help("Browse another show")
 
             Spacer()
 
@@ -264,7 +255,7 @@ struct InfoCardView: View {
 
             ForEach(Array(quota.windows.enumerated()), id: \.offset) { index, window in
                 if index > 0 || quota.attribution != nil {
-                    Text("\u{00B7}").foregroundStyle(.quaternary).font(.system(size: 10))
+                    Text(verbatim: "\u{00B7}").foregroundStyle(.quaternary).font(.system(size: 10))
                 }
                 Text(window.label)
                     .font(.system(size: 10))
@@ -304,7 +295,7 @@ struct InfoCardView: View {
         }
     }
 
-    // MARK: - Topic picker
+    // MARK: - Show picker
 
     /// Built like the session list rather than as a pop-up menu.
     ///
@@ -318,7 +309,7 @@ struct InfoCardView: View {
         let topics = controller.browsableCategories
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
-                Text("TOPICS")
+                Text("SHOWS")
                     .font(.system(size: 9, weight: .bold))
                     .padding(.horizontal, 6)
                     .padding(.vertical, 3)
@@ -353,8 +344,8 @@ struct InfoCardView: View {
         .padding(14)
     }
 
-    private func categoryRow(_ category: TopicCategory, count: Int) -> some View {
-        // The topic the visible card came from, not the one the agent is on:
+    private func categoryRow(_ category: CardCategory, count: Int) -> some View {
+        // The show the visible card came from, not whatever the agent is on:
         // this list sits in front of a card, and marking a different row would
         // be pointing at something the user cannot see.
         let isCurrent = controller.current?.category == category
@@ -364,13 +355,13 @@ struct InfoCardView: View {
                     .fill(isCurrent ? Color.accentColor : Color.clear)
                     .frame(width: 6, height: 6)
 
-                Text(category.fallbackLabel)
+                Text(verbatim: category.label)
                     .font(.system(size: 11, weight: isCurrent ? .semibold : .regular))
                     .lineLimit(1)
 
                 Spacer(minLength: 6)
 
-                Text("\(count)")
+                Text(verbatim: "\(count)")
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
                     .monospacedDigit()
@@ -394,7 +385,7 @@ struct InfoCardView: View {
                 .fixedSize()
 
             if let project = session.project {
-                Text("\u{00B7}").foregroundStyle(.quaternary).font(.system(size: 11))
+                Text(verbatim: "\u{00B7}").foregroundStyle(.quaternary).font(.system(size: 11))
                 Text(ProjectPath.displayName(project))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
@@ -413,7 +404,7 @@ struct InfoCardView: View {
                     .monospacedDigit()
                     .foregroundStyle(.tertiary)
                     .fixedSize()
-                Text("\u{00B7}")
+                Text(verbatim: "\u{00B7}")
                     .font(.system(size: 10))
                     .foregroundStyle(.quaternary)
             }
@@ -450,7 +441,7 @@ struct InfoCardView: View {
     // MARK: - Shared
 
     private func iconButton(
-        _ symbol: String, help: String, action: @escaping () -> Void
+        _ symbol: String, help: LocalizedStringKey, action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             Image(systemName: symbol)

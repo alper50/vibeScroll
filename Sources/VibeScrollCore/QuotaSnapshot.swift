@@ -44,10 +44,10 @@ public struct QuotaWindow: Equatable, Sendable {
     /// same idea, in the same list, one line apart.
     public var label: String {
         switch kind {
-        case "session", "five_hour": return "Session"
-        case "weekly_all", "seven_day": return "Weekly"
-        case "weekly_opus", "seven_day_opus": return "Weekly (Opus)"
-        case "weekly_sonnet", "seven_day_sonnet": return "Weekly (Sonnet)"
+        case "session", "five_hour": return String(localized: "Session")
+        case "weekly_all", "seven_day": return String(localized: "Weekly")
+        case "weekly_opus", "seven_day_opus": return String(localized: "Weekly (Opus)")
+        case "weekly_sonnet", "seven_day_sonnet": return String(localized: "Weekly (Sonnet)")
         default: return kind.replacingOccurrences(of: "_", with: " ").capitalized
         }
     }

@@ -1,11 +1,16 @@
 # vibeScroll
 
-A macOS menu bar app that watches your AI coding agents and teaches you
-something relevant to whatever they are doing right now.
+A macOS menu bar app that watches your AI coding agents and, while they work,
+hands you something short to read: a true, one-glance fact about one of eight
+TV shows — Game of Thrones, Breaking Bad, Stranger Things, The Office, Friends,
+The Sopranos, Sherlock and Squid Game.
 
-When an agent runs `git rebase`, you get a card about rebasing. When it edits a
-lockfile, you get a card about lockfiles. The card never takes focus, never
-blocks the agent, and paces itself so it stays useful instead of chatty.
+What the agent is doing sets the rhythm — a card waits until an agent has
+settled into one kind of work, and the same kind of work does not trigger
+another for a while. The shows take turns. The card never takes focus, never
+blocks the agent, and paces itself so it stays pleasant instead of chatty.
+
+The interface and the cards follow the Mac's language: English and Turkish.
 
 Supports 12 agents through their own hook systems, plus a universal wrapper for
 anything else.
@@ -22,10 +27,11 @@ vibescroll hook --agent <kind>          ← same binary, CLI role. Always exits 
 ~/.vibescroll/vibescroll.sock           ← queued to disk if the app is closed
   ▼
 AppDaemon  →  SessionStore  →  CategoryResolver  →  TopicCategory
-                                                        │
-                          ContentStore (cached catalogue from the backend)
-                                                        │
+                                                        │  (when: what the agent is doing)
                                    CardScheduler (dwell + cooldown gates)
+                                                        │
+                          ContentStore (cached catalogue, in the device's language)
+                                                        │  (which: least recently shown, any show)
                                                         ▼
                                               the floating card
 ```
@@ -45,12 +51,13 @@ Two rules the whole design follows:
 | --- | --- |
 | `Sources/VibeScrollCore/` | Pure logic: event decoding, state machine, category resolution, pacing. No AppKit, fully tested. |
 | `Sources/App/` | The macOS app: daemon, menu bar, card panel, settings — plus the `hook` and `run` CLI roles. |
-| `Tests/` | 306 tests over the core. |
+| `Resources/Localization/` | The interface's string catalogue (English source, Turkish translations). |
+| `Tests/` | 371 tests over the core. |
 
-The teaching content is served by a separate repository,
+The cards are served by a separate repository,
 [vibeScroll-backend](../vibeScroll-backend). The two are coupled only by an
-HTTP contract and the shared `TopicCategory` vocabulary, so either can be
-deployed, rebuilt or replaced without touching the other.
+HTTP contract and two shared lists — `CardCategory` and `ContentLanguage` — so
+either can be deployed, rebuilt or replaced without touching the other.
 
 ## Running it
 
@@ -278,9 +285,11 @@ What matters on this side is the contract:
 
 - The client fetches `/v1/catalog` once at launch and every six hours, sending
   `If-None-Match` so an unchanged catalogue costs a 304 instead of a download.
-- The whole catalogue is cached to `~/.vibescroll/cache/catalog.json`, so the
-  app keeps showing cards with the backend unreachable. A failed refresh is
-  silent by design — yesterday's cards beat an empty surface.
+- The request carries `Accept-Language` for the device's language (see
+  *Languages*), and each language is cached to its own
+  `~/.vibescroll/cache/catalog-<lang>.json`, so the app keeps showing cards
+  with the backend unreachable. A failed refresh is silent by design —
+  yesterday's cards beat an empty surface.
 - A deployed backend can require a signed request. `ClientSignature` adds an
   HMAC over `<timestamp>\n<path>` when the build carries a secret, and sends
   nothing when it does not — so an unconfigured app and an unconfigured server
@@ -294,31 +303,75 @@ What matters on this side is the contract:
   cards are public content; there is nothing here worth pretending otherwise
   about. A 401 is the one refresh failure reported by name rather than
   swallowed, because it is the only one that will never resolve itself.
-- `TopicCategory` is the shared vocabulary. Adding a category means adding it
-  here **and** in the backend's `CATEGORIES`. Server-first is safe: an unknown
-  category degrades to `generic` on an older client rather than failing the
-  decode, so the app never has to ship in lockstep with content.
+- `CardCategory` is the shared content vocabulary. Adding a category means
+  adding it there **and** in the backend's `CATEGORIES`. Server-first is safe:
+  an older client skips a card whose category it does not know rather than
+  failing the decode, so the app never has to ship in lockstep with content.
+- `TopicCategory` is *not* shared. It is what an agent is doing — reading,
+  testing, version control — and it only decides when a card may appear. It
+  never reaches the backend, so the catalogue can be about anything.
+
+## Languages
+
+English and Turkish, for both the interface and the cards, chosen by the Mac:
+System Settings → Language & Region, including the per-app override there.
+There is no language setting in vibeScroll — one would only be a second place
+for the two to disagree.
+
+- **Cards.** `ContentLanguage.resolve` takes the first supported language from
+  `Locale.preferredLanguages` — the same list AppKit picks the interface's
+  `.lproj` from — and `ContentStore` sends it as `Accept-Language`. The server
+  answers in that language and says so; the answer is cached under the language
+  the server *actually* used, so a backend without Turkish yet cannot leave an
+  English catalogue filed as Turkish.
+- **Interface.** `Resources/Localization/Localizable.xcstrings` is a standard
+  String Catalog, editable in Xcode. Nobody maintains its keys by hand: the
+  compiler finds every `String(localized:)` and SwiftUI literal, interpolations
+  included, and `xcstringstool` merges them in.
+
+  ```bash
+  ./scripts/sync-strings.sh     # after changing any user-facing text
+  python3 scripts/check-strings.py
+  ```
+
+  The check fails on an untranslated string and on a translation whose format
+  specifiers do not match the source — a `%@` where the code passes a number
+  reads garbage at runtime. `build-app.sh` compiles the catalogue into
+  `en.lproj` / `tr.lproj`; without Xcode's `xcstringstool` it still builds, in
+  English.
+
+A few things are deliberately left alone: show titles (proper nouns, shipped
+under the same name in both languages), agent and brand names, the
+`vibescroll face` developer window, CLI usage text, task logs, and the
+instructions appended to queued prompts — those are read by a model, not a
+person.
+
+A string that reads the same in English but not in Turkish gets its own key.
+Topic names are `topic.*` for that reason: "Testing" is a noun on a topic
+("Test") and a verb in the activity line ("Test ediliyor").
 
 ## Tuning what you see
 
 Settings → General has three pacing presets. They set four coupled numbers that
 only make sense together:
 
-| Preset | Dwell | Global gap | Same-topic gap |
+| Preset | Dwell | Global gap | Same-activity gap |
 | --- | --- | --- | --- |
 | Calm | 15s | 5 min | 1 hr |
 | Normal | 8s | 90s | 15 min |
 | Eager | 4s | 30s | 5 min |
 
-*Dwell* is how long an agent must stay on one topic before it counts — it is
-what stops the card strobing while an agent fires tool calls several times a
-second.
+*Dwell* is how long an agent must stay on one kind of work before it counts —
+it is what stops the card strobing while an agent fires tool calls several
+times a second. The same-activity gap belongs to the work, not the show: an
+hour of debugging is one card per gap, whichever show it came from.
 
 A card stays until you dismiss it with the **×**. The **›** button appears once
 the text has finished writing, and advances to
-the next one: unseen material in the current topic first, then other topics,
+the next one: unseen material in the current show first, then other shows,
 and once you have seen everything it cycles the oldest card rather than going
-inert. Browsing suppresses automatic cards until you dismiss — pressing Next
+inert. The show badge in the card's header opens a picker for jumping to a
+show directly. Browsing suppresses automatic cards until you dismiss — pressing Next
 means you are reading, and the surface should not replace itself under you.
 Cards you browse to count as seen, so they will not resurface on their own.
 
@@ -371,7 +424,7 @@ noticed. Roughly in the order they are worth doing:
 | **Session history** | `prune` deletes a session ten minutes after it goes idle. Nothing about what you worked on survives a restart, and it cannot be backfilled — the data you do not record today is gone. |
 | **Per-project usage totals** | Tokens are counted per session and then discarded. Rolled up per project and per day they would answer "where did this week go", which nothing else can. |
 | **Auto-update** | Deferred on purpose: it needs a distribution story first — Developer ID signing, notarization and somewhere to host an appcast. Premature before there is anything to update from. |
-| **Localization** | English only. |
+| **More languages** | English and Turkish today. A language is three lists — `ContentLanguage`, the backend's `LANGUAGES`, `CFBundleLocalizations` — plus its translations. |
 
 Deliberately **not** planned:
 

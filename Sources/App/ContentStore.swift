@@ -1,20 +1,28 @@
 import Foundation
 import VibeScrollCore
 
-/// Fetches the teaching catalogue from the backend and keeps it on disk.
+/// Fetches the card catalogue from the backend and keeps it on disk.
 ///
 /// Offline is the normal case, not an error path: agents run on planes and in
 /// locked-down networks. So the store always serves from an in-memory copy
 /// hydrated from disk at launch, and a fetch only ever *replaces* that copy on
 /// success. A failed refresh is silent — the user keeps seeing yesterday's
 /// cards rather than an empty surface.
+///
+/// The catalogue is requested in the device's language (`ContentLanguage`),
+/// and each language is cached in its own file: switching the system language
+/// and back must not throw away a catalogue that is still good, nor show the
+/// old language's cards under a new interface.
 @MainActor
 final class ContentStore: ObservableObject {
     static let shared = ContentStore()
 
-    /// Cards grouped by topic, ready for the scheduler to pick from.
-    @Published private(set) var byCategory: [TopicCategory: [InfoCard]] = [:]
+    /// Cards grouped by show, ready for the scheduler to pick from.
+    @Published private(set) var byCategory: [CardCategory: [InfoCard]] = [:]
     @Published private(set) var version: String = ""
+    /// Language of the cards held in memory, which is what the version above
+    /// describes. `nil` until something has loaded.
+    @Published private(set) var language: ContentLanguage?
     @Published private(set) var lastRefreshAt: Date?
     /// Last failure, surfaced in Settings only. Never blocks card display.
     @Published private(set) var lastError: String?
@@ -57,21 +65,29 @@ final class ContentStore: ObservableObject {
         Task { await refresh(force: true) }
     }
 
+    /// The language to ask for, read fresh each time. macOS applies a language
+    /// change to an app at its next launch, so in practice this settles once —
+    /// but reading it rather than caching it means the store can never
+    /// disagree with the interface it sits in.
+    var preferredLanguage: ContentLanguage {
+        ContentLanguage.resolve(preferredLanguages: Locale.preferredLanguages)
+    }
+
     func start() {
-        loadFromDisk()
+        loadFromDisk(preferredLanguage)
         Task { await refresh() }
         refreshTimer = Timer.scheduledTimer(withTimeInterval: Self.refreshInterval, repeats: true) { _ in
             Task { @MainActor in await ContentStore.shared.refresh() }
         }
     }
 
-    func cards(for category: TopicCategory) -> [InfoCard] {
+    func cards(for category: CardCategory) -> [InfoCard] {
         byCategory[category] ?? []
     }
 
-    /// Every card, in a stable order. Manual navigation spills across
-    /// categories, so it needs the whole pool — sorted by id rather than
-    /// dictionary order so the traversal can't reshuffle between calls.
+    /// Every card, in a stable order. Automatic cards and manual navigation both
+    /// draw from the whole pool — sorted by id rather than dictionary order so
+    /// the traversal can't reshuffle between calls.
     var allCards: [InfoCard] {
         byCategory.values.flatMap { $0 }.sorted { $0.id < $1.id }
     }
@@ -88,10 +104,20 @@ final class ContentStore: ObservableObject {
         inFlight = true
         defer { inFlight = false }
 
+        // A language that changed since the last load swaps in that language's
+        // cache first, so the version negotiated below is the right one and a
+        // refresh that fails still leaves cards in the right language.
+        let language = preferredLanguage
+        if language != self.language { loadFromDisk(language) }
+
         let url = baseURL.appendingPathComponent("v1/catalog")
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        // Set explicitly rather than left to URLSession, whose default is built
+        // from the bundle's localizations and would drift from `ContentLanguage`
+        // the moment the two lists differ.
+        request.setValue(language.acceptLanguageHeader, forHTTPHeaderField: "Accept-Language")
         // Signed when this build carries a secret, absent when it does not —
         // and a server without secrets of its own does not ask for one, so the
         // unconfigured pair works out of the box. See `ClientSignature` for
@@ -121,13 +147,17 @@ final class ContentStore: ObservableObject {
                 // failure is otherwise silent by design and this is the one
                 // that stays silent for ever.
                 lastError = code == 401
-                    ? "Backend rejected this build's signature (HTTP 401). Its secret does not match the server's."
-                    : "Backend returned HTTP \(code)"
+                    ? String(localized: "Backend rejected this build's signature (HTTP 401). Its secret does not match the server's.")
+                    : String(localized: "Backend returned HTTP \(code)")
                 return
             }
             let bundle = try JSONDecoder().decode(CardBundle.self, from: data)
-            apply(bundle)
-            writeToDisk(data)
+            // Filed under the language the server says it answered in: a
+            // backend without Turkish yet answers English, and that must not
+            // be cached as the Turkish catalogue.
+            let answered = bundle.language ?? .fallback
+            apply(bundle, language: answered)
+            writeToDisk(data, language: answered)
             lastRefreshAt = Date()
             lastError = nil
         } catch {
@@ -136,29 +166,39 @@ final class ContentStore: ObservableObject {
         }
     }
 
-    private func apply(_ bundle: CardBundle) {
+    private func apply(_ bundle: CardBundle, language: ContentLanguage) {
         version = bundle.version
+        self.language = language
         byCategory = Dictionary(grouping: bundle.cards, by: \.category)
     }
 
     // MARK: - Disk cache
 
-    private var cacheURL: URL {
-        URL(fileURLWithPath: VibeScrollPaths.cacheDir).appendingPathComponent("catalog.json")
+    private func cacheURL(for language: ContentLanguage) -> URL {
+        URL(fileURLWithPath: VibeScrollPaths.cacheDir)
+            .appendingPathComponent("catalog-\(language.rawValue).json")
     }
 
-    private func loadFromDisk() {
-        guard let data = try? Data(contentsOf: cacheURL),
+    /// Replaces what is in memory with `language`'s cache. With no cache for it
+    /// yet, memory is emptied rather than left holding another language: no
+    /// cards for a moment is better than cards the interface cannot vouch for.
+    private func loadFromDisk(_ language: ContentLanguage) {
+        guard let data = try? Data(contentsOf: cacheURL(for: language)),
               let bundle = try? JSONDecoder().decode(CardBundle.self, from: data)
-        else { return }
-        apply(bundle)
+        else {
+            version = ""
+            self.language = language
+            byCategory = [:]
+            return
+        }
+        apply(bundle, language: language)
     }
 
-    private func writeToDisk(_ data: Data) {
+    private func writeToDisk(_ data: Data, language: ContentLanguage) {
         try? FileManager.default.createDirectory(
             atPath: VibeScrollPaths.cacheDir, withIntermediateDirectories: true)
         // Atomic so a crash mid-write can't leave a truncated cache that then
         // fails to decode on the next launch.
-        try? data.write(to: cacheURL, options: .atomic)
+        try? data.write(to: cacheURL(for: language), options: .atomic)
     }
 }

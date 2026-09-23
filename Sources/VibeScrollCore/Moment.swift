@@ -44,18 +44,20 @@ public enum Moment: Equatable, Sendable {
 
     public var title: String {
         switch self {
-        case .welcome:            return "vibeScroll is running"
-        case .sessionStarted:     return "Session started"
-        case .turnFinished:       return "Turn finished"
-        case .waitingOnYou:       return "Waiting on you"
-        case .rateLimited:        return "Rate limited"
-        case .windowRenewed:      return "Five-hour window renewed"
-        case .longHaul(let h):    return "\(h) hours in"
-        case .crowd(let count):   return "\(count) agents at once"
-        case .taskStarted:        return "Queue started a task"
+        case .welcome:            return String(localized: "vibeScroll is running")
+        case .sessionStarted:     return String(localized: "Session started")
+        case .turnFinished:       return String(localized: "Turn finished")
+        case .waitingOnYou:       return String(localized: "Waiting on you")
+        case .rateLimited:        return String(localized: "Rate limited")
+        case .windowRenewed:      return String(localized: "Five-hour window renewed")
+        case .longHaul(let h):    return String(localized: "\(h) hours in")
+        case .crowd(let count):   return String(localized: "\(count) agents at once")
+        case .taskStarted:        return String(localized: "Queue started a task")
         case .allQuiet(let count):
-            return count == 1 ? "Your agent stopped" : "All \(count) stopped"
-        case .stillHere:          return "Still here"
+            return count == 1
+                ? String(localized: "Your agent stopped")
+                : String(localized: "All \(count) stopped")
+        case .stillHere:          return String(localized: "Still here")
         }
     }
 
@@ -63,30 +65,32 @@ public enum Moment: Equatable, Sendable {
     public var detail: String {
         switch self {
         case .welcome:
-            return "It watches your agents. Nothing to set up."
+            return String(localized: "It watches your agents. Nothing to set up.")
         case .sessionStarted(let agent, let project),
              .turnFinished(let agent, let project),
              .waitingOnYou(let agent, let project):
             return Self.label(agent: agent, project: project)
         case .rateLimited(let count):
-            return count <= 1 ? "First one this hour." : "\(count) this hour."
+            return count <= 1
+                ? String(localized: "First one this hour.")
+                : String(localized: "\(count) this hour.")
         case .windowRenewed:
-            return "Nothing spent yet."
+            return String(localized: "Nothing spent yet.")
         case .longHaul:
-            return "Since your first agent started."
+            return String(localized: "Since your first agent started.")
         case .crowd:
-            return "Click the face for the full list."
+            return String(localized: "Click the face for the full list.")
         case .taskStarted(let project):
             return ProjectPath.displayName(project)
         case .allQuiet:
-            return "Nothing is running now."
+            return String(localized: "Nothing is running now.")
         // Said in whole units because the number is the point and the precision
         // is not: "quiet for 97 minutes" is a stopwatch reading, not a remark.
         case .stillHere(let minutes):
             switch minutes {
-            case ..<60:  return "Quiet for \(minutes) minutes."
-            case 60:     return "An hour without an agent."
-            default:     return "\(minutes / 60) hours without an agent."
+            case ..<60:  return String(localized: "Quiet for \(minutes) minutes.")
+            case 60:     return String(localized: "An hour without an agent.")
+            default:     return String(localized: "\(minutes / 60) hours without an agent.")
             }
         }
     }

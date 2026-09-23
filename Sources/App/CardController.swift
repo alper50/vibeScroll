@@ -28,9 +28,9 @@ final class CardController: ObservableObject {
     /// longer auto-dismiss, so `dismiss()` is the only thing that clears it.
     @Published private(set) var isBrowsing = false
 
-    /// Topic that triggered the visible card. Manual navigation stays inside it
+    /// Show the visible card belongs to. Manual navigation stays inside it
     /// until its material runs out.
-    private var activeTopic: TopicCategory?
+    private var activeCategory: CardCategory?
 
     /// What the panel is showing.
     enum Mode { case card, sessions, categories }
@@ -111,6 +111,10 @@ final class CardController: ObservableObject {
 
     /// Called on every session refresh. Cheap and idempotent: the scheduler
     /// rejects almost every call, which is the point.
+    ///
+    /// The agent's activity decides *when* a card may appear — its topic has to
+    /// hold for the dwell and clear its own cooldown — and the whole catalogue
+    /// is the pool, least recently shown first, so the shows take turns.
     func consider(sessions: [AgentSession], now: Date = Date()) {
         // Recorded before any gate: the sessions list must stay live even when
         // cards are paused, the user is browsing, or the list itself is open.
@@ -151,14 +155,14 @@ final class CardController: ObservableObject {
         let relevant = sessions.filter { $0.state == .working && $0.topic == topic }
         guard let leader = relevant.max(by: { $0.topicSince < $1.topicSince }) else { return }
 
-        let candidates = ContentStore.shared.cards(for: topic)
+        let candidates = ContentStore.shared.allCards
         guard !candidates.isEmpty else { return }
 
         guard let card = scheduler.next(
             topic: topic, topicSince: leader.topicSince, candidates: candidates, now: now
         ) else { return }
 
-        activeTopic = topic
+        activeCategory = card.category
         present(card, context: relevant)
     }
 
@@ -169,8 +173,8 @@ final class CardController: ObservableObject {
     /// still doing whatever it was doing.
     func showNext(now: Date = Date()) {
         guard let card = scheduler.advance(
-            from: nextPool,
-            topic: activeTopic,
+            from: ContentStore.shared.allCards,
+            category: activeCategory,
             excluding: current?.id,
             now: now
         ) else { return }
@@ -190,14 +194,14 @@ final class CardController: ObservableObject {
         QuotaSummary.summarise(sessions: sessions, snapshot: UsageProbe.shared.snapshot)
     }
 
-    /// Topics that actually have cards, with their counts.
+    /// Shows that actually have cards, with their counts.
     ///
     /// Empty categories are left out rather than shown disabled: a picker whose
     /// rows do nothing teaches the user to distrust the rest of them, and which
-    /// topics have content is the backend's business to change, not something
+    /// shows have content is the backend's business to change, not something
     /// worth reporting as a gap here.
-    var browsableCategories: [(category: TopicCategory, count: Int)] {
-        TopicCategory.allCases.compactMap { category in
+    var browsableCategories: [(category: CardCategory, count: Int)] {
+        CardCategory.allCases.compactMap { category in
             let count = ContentStore.shared.cards(for: category).count
             return count > 0 ? (category, count) : nil
         }
@@ -211,49 +215,35 @@ final class CardController: ObservableObject {
         syncPanel()
     }
 
-    /// Jumps to a topic the user picked.
+    /// Jumps to a show the user picked.
     ///
     /// Manual navigation, like `showNext`, and it answers to none of the pacing
     /// gates for the same reason: they exist to stop the surface talking over
     /// you, and this is you asking. `isBrowsing` is set so an automatic card
     /// cannot replace what was just requested, and the pick counts as seen.
     ///
-    /// `activeTopic` moves too, so the Next button carries on inside the topic
-    /// that was chosen rather than snapping back to whatever the agent is doing.
-    func showCategory(_ category: TopicCategory, now: Date = Date()) {
+    /// `activeCategory` moves too, so the Next button carries on inside the show
+    /// that was chosen.
+    func showCategory(_ category: CardCategory, now: Date = Date()) {
         let candidates = ContentStore.shared.cards(for: category)
-        // Being inside its repeat window is not a reason to refuse a topic
+        // Being inside its repeat window is not a reason to refuse a show
         // somebody explicitly asked for. Same escape as `advance`'s last tier,
         // which is what stops Next dead-ending once the catalogue has been seen.
         guard let card = scheduler.pick(from: candidates, now: now)
                 ?? scheduler.leastRecentlyShown(in: candidates, now: now)
         else { return }
 
-        activeTopic = category
+        activeCategory = category
         isBrowsing = true
         scheduler.recordShown(card, now: now)
         present(card, context: context)
-    }
-
-    /// What the Next button may reach.
-    ///
-    /// `advance` widens past the current topic once that topic runs out, which
-    /// is what stops the button dead-ending. Left alone it widens into the
-    /// diversions too, so a debugging session that exhausted its four cards
-    /// would answer the next press with television. Diversions are reachable by
-    /// asking for one — and once you have, Next stays inside it, because at
-    /// that point television is exactly what was asked for.
-    private var nextPool: [InfoCard] {
-        let all = ContentStore.shared.allCards
-        guard activeTopic?.isDiversion != true else { return all }
-        return all.filter { !$0.category.isDiversion }
     }
 
     /// Shows a card immediately, bypassing every gate. Used by the Settings
     /// preview button — it must not consume the real pacing budget, so it does
     /// not go through the scheduler at all.
     func preview(_ card: InfoCard) {
-        activeTopic = card.category
+        activeCategory = card.category
         present(card, context: [])
     }
 
@@ -420,7 +410,7 @@ final class CardController: ObservableObject {
         context = []
         momentExpiry?.cancel()
         moment = nil
-        activeTopic = nil
+        activeCategory = nil
         isBrowsing = false
         mode = .card
         syncPanel()
@@ -434,7 +424,7 @@ final class CardController: ObservableObject {
         context = []
         momentExpiry?.cancel()
         moment = nil
-        activeTopic = nil
+        activeCategory = nil
         isBrowsing = false
         mode = .card
         suppressed = true

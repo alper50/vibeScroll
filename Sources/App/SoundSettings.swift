@@ -21,9 +21,9 @@ final class SoundSettings: ObservableObject {
 
         var title: String {
             switch self {
-            case .done: return "When an agent finishes"
-            case .waiting: return "When an agent needs input"
-            case .quota: return "When you run out of quota"
+            case .done: return String(localized: "When an agent finishes")
+            case .waiting: return String(localized: "When an agent needs input")
+            case .quota: return String(localized: "When you run out of quota")
             }
         }
 
@@ -124,7 +124,7 @@ final class SoundSettings: ObservableObject {
         var errorDescription: String? {
             switch self {
             case .unreadable(let name):
-                return "\(name) could not be played as a sound."
+                return String(localized: "\(name) could not be played as a sound.")
             }
         }
     }

@@ -41,7 +41,13 @@ struct GeneralSettingsView: View {
     enum Pacing: String, CaseIterable, Identifiable {
         case calm, normal, eager
         var id: String { rawValue }
-        var label: String { rawValue.capitalized }
+        var label: String {
+            switch self {
+            case .calm:   return String(localized: "Calm")
+            case .normal: return String(localized: "Normal")
+            case .eager:  return String(localized: "Eager")
+            }
+        }
 
         var policy: CardScheduler.Policy {
             switch self {
@@ -79,7 +85,7 @@ struct GeneralSettingsView: View {
                 .pickerStyle(.segmented)
                 .disabled(!cards.enabled)
             } footer: {
-                Text("Cards appear while an agent works, based on what it is doing. They never take focus, and stay until you dismiss them.")
+                Text("Cards appear while an agent works, paced by what it is doing. They never take focus, and stay until you dismiss them.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -115,17 +121,17 @@ struct SetupChecklist: View {
             Section {
                 step(done: anyHookInstalled,
                      title: "Connect your agents",
-                     detail: "vibeScroll sees nothing at all until one agent's hooks are installed.",
+                     detail: String(localized: "vibeScroll sees nothing at all until one agent's hooks are installed."),
                      jump: .integrations)
                 step(done: content.count > 0,
                      title: "Point at a card backend",
                      detail: content.count > 0
-                        ? "\(content.count) cards ready."
-                        : "No cards yet. Check the connection under Content.",
+                        ? String(localized: "\(content.count) cards ready.")
+                        : String(localized: "No cards yet. Check the connection under Content."),
                      jump: .content)
                 step(done: loginItem.state.isOn,
                      title: "Start at login",
-                     detail: "A menu bar app you have to remember to open is off exactly when it is needed.",
+                     detail: String(localized: "A menu bar app you have to remember to open is off exactly when it is needed."),
                      jump: nil)
             } header: {
                 HStack {
@@ -146,7 +152,7 @@ struct SetupChecklist: View {
     }
 
     private func step(
-        done: Bool, title: String, detail: String, jump: SettingsView.Tab?
+        done: Bool, title: LocalizedStringKey, detail: String, jump: SettingsView.Tab?
     ) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Image(systemName: done ? "checkmark.circle.fill" : "circle")
@@ -214,11 +220,11 @@ struct StartupSection: View {
     private var caption: String {
         switch loginItem.state {
         case .on:
-            return "vibeScroll starts with your Mac."
+            return String(localized: "vibeScroll starts with your Mac.")
         case .off:
-            return "Agent events are queued to disk while vibeScroll is closed, so none are lost — but none are shown either."
+            return String(localized: "Agent events are queued to disk while vibeScroll is closed, so none are lost — but none are shown either.")
         case .blockedByUser:
-            return "Turned off in System Settings \u{203A} General \u{203A} Login Items. Re-enable it there."
+            return String(localized: "Turned off in System Settings \u{203A} General \u{203A} Login Items. Re-enable it there.")
         case .unavailable(let message):
             return message
         }
@@ -364,7 +370,7 @@ struct SoundsSection: View {
         panel.allowedContentTypes = [.audio]
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
-        panel.prompt = "Use Sound"
+        panel.prompt = String(localized: "Use Sound")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
             try sounds.importSound(from: url, for: event)
@@ -445,7 +451,7 @@ struct ContentSettingsView: View {
         Form {
             Section("Backend") {
                 TextField("Origin", text: $draftURL,
-                          prompt: Text("https://vibescroll-backend-vibescroll.up.railway.app"))
+                          prompt: Text(verbatim: "https://vibescroll-backend-vibescroll.up.railway.app"))
                     .textFieldStyle(.roundedBorder)
                 HStack {
                     Button("Save & refresh") { store.setBaseURL(draftURL) }
@@ -455,11 +461,14 @@ struct ContentSettingsView: View {
 
             Section("Catalogue") {
                 LabeledContent("Cards", value: "\(store.count)")
+                // Follows the device, so it is shown rather than offered:
+                // System Settings is where it changes, for the interface too.
+                LabeledContent("Language", value: store.language.map(languageName) ?? "\u{2014}")
                 LabeledContent("Version", value: store.version.isEmpty ? "—" : store.version)
                 LabeledContent("Last refresh") {
                     Text(store.lastRefreshAt.map {
                         $0.formatted(date: .abbreviated, time: .shortened)
-                    } ?? "never")
+                    } ?? String(localized: "never"))
                 }
                 if let error = store.lastError {
                     Text(error).font(.caption).foregroundStyle(.red)
@@ -479,5 +488,11 @@ struct ContentSettingsView: View {
         }
         .formStyle(.grouped)
         .onAppear { draftURL = store.baseURL.absoluteString }
+    }
+
+    /// "Türkçe" / "English", in the interface's own language.
+    private func languageName(_ language: ContentLanguage) -> String {
+        Locale.current.localizedString(forLanguageCode: language.rawValue)?
+            .localizedCapitalized ?? language.rawValue
     }
 }

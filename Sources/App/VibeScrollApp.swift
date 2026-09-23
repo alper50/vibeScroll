@@ -47,8 +47,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !repaired.isEmpty {
             let names = repaired.map(TickerFormatter.agentLabel(for:)).joined(separator: ", ")
             NotificationManager.shared.notify(
-                title: "vibeScroll hooks updated",
-                body: "The app moved, so hooks for \(names) now point at its new location.")
+                title: String(localized: "vibeScroll hooks updated"),
+                body: String(localized: "The app moved, so hooks for \(names) now point at its new location."))
         }
 
         // Nothing visible happens when a menu bar app launches — an icon joins

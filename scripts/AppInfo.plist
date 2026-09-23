@@ -12,6 +12,16 @@
     <string>vibescroll</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
+    <!-- Interface languages. Must match the .lproj folders build-app.sh
+         compiles and ContentLanguage in the core: macOS only offers an app a
+         language it declares here, and the card text follows the same list. -->
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>en</string>
+        <string>tr</string>
+    </array>
     <key>CFBundleShortVersionString</key>
     <string>0.1.0</string>
     <key>CFBundleVersion</key>
@@ -21,8 +31,8 @@
     <!-- Menu bar only: no Dock icon, no window on launch. -->
     <key>LSUIElement</key>
     <true/>
-    <!-- The catalogue is served over plain HTTP from localhost by default, so
-         the loopback exception is required until a TLS origin is configured. -->
+    <!-- The hosted catalogue is https. This only keeps a local backend
+         (http://127.0.0.1:8787) reachable for development. -->
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSAllowsLocalNetworking</key>

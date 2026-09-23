@@ -142,17 +142,15 @@ final class CardLayoutTests: XCTestCase {
         }
     }
 
-    func testTheFullPickerReachesTheCapAndScrolls() {
-        // Seventeen topics no longer fit: the work categories plus the
-        // diversions come to more rows than a 420pt panel holds, so the last of
-        // them are behind a scroll. That is the cap doing its job rather than a
-        // regression — the alternative is an ambient panel half the screen tall.
-        let full = CardLayout.panelHeight(for: .categories(count: TopicCategory.allCases.count))
-        XCTAssertEqual(full, CardLayout.maxListHeight)
-        XCTAssertGreaterThan(
-            CardLayout.chrome + Double(TopicCategory.allCases.count) * CardLayout.rowHeight,
-            CardLayout.maxListHeight,
-            "the picker would fit — this test is describing a cap that no longer binds")
+    func testTheFullPickerFitsWithoutScrolling() {
+        // One row per show. Well under the cap, so the whole catalogue is on
+        // screen at once — the cap exists for a long session list, not for this.
+        let rows = Double(CardCategory.allCases.count)
+        let full = CardLayout.panelHeight(for: .categories(count: CardCategory.allCases.count))
+        XCTAssertLessThan(full, CardLayout.maxListHeight)
+        XCTAssertLessThanOrEqual(
+            CardLayout.chrome + rows * CardLayout.rowHeight, CardLayout.maxListHeight,
+            "the picker would scroll — a show was added that the cap does not leave room for")
     }
 
     func testThePickerIsSizedToItsRowsLikeAnyOtherList() {

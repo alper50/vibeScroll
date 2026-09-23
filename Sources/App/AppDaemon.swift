@@ -163,8 +163,8 @@ final class AppDaemon: ObservableObject {
         let project = store.session(id: sessionId)?.project.map(ProjectPath.displayName)
             ?? sessionId
         NotificationManager.shared.notify(
-            title: "\(project) hit a rate limit",
-            body: "The agent gave up after exhausting its retries.")
+            title: String(localized: "\(project) hit a rate limit"),
+            body: String(localized: "The agent gave up after exhausting its retries."))
         SoundSettings.shared.play(.quota)
         // The face carries the pattern a dismissed notification cannot: three
         // of these in an hour is a different day from one.
@@ -301,11 +301,13 @@ final class AppDaemon: ObservableObject {
         switch session.state {
         case .waiting:
             NotificationManager.shared.notify(
-                title: "\(project) needs input", body: session.message ?? "Waiting for you")
+                title: String(localized: "\(project) needs input"),
+                body: session.message ?? String(localized: "Waiting for you"))
             SoundSettings.shared.play(.waiting)
         case .done:
             NotificationManager.shared.notify(
-                title: "\(project) finished", body: "Agent completed its turn")
+                title: String(localized: "\(project) finished"),
+                body: String(localized: "Agent completed its turn"))
             SoundSettings.shared.play(.done)
         default:
             break

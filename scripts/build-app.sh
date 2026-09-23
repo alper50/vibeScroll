@@ -33,6 +33,21 @@ if [ -d "$ROOT/Resources/Sounds" ]; then
   cp "$ROOT/Resources/Sounds/"*.wav "$APP/Contents/Resources/" 2>/dev/null || true
 fi
 
+# Interface translations. The catalogue is the source (see
+# scripts/sync-strings.sh); what ships is one compiled .lproj per language in
+# Contents/Resources, where AppKit and SwiftUI look for Bundle.main's strings.
+# Without Xcode's `xcstringstool` the app still builds and runs — in English.
+CATALOG="$ROOT/Resources/Localization/Localizable.xcstrings"
+if [ -f "$CATALOG" ]; then
+  if xcrun --find xcstringstool >/dev/null 2>&1; then
+    python3 "$ROOT/scripts/check-strings.py" "$CATALOG" >/dev/null \
+      || echo "warning: the string catalogue has untranslated or mismatched strings (run scripts/check-strings.py)"
+    xcrun xcstringstool compile "$CATALOG" --output-directory "$APP/Contents/Resources" >/dev/null
+  else
+    echo "warning: xcstringstool not found (needs Xcode); building without translations"
+  fi
+fi
+
 # Ad-hoc sign so the bundle has a stable identity for the notification centre
 # and the keychain; without any signature macOS treats each build as a new app.
 codesign --force --sign - "$APP" || echo "warning: codesign failed (continuing unsigned)"

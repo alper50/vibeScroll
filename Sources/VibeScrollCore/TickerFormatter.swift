@@ -19,8 +19,8 @@ public enum TickerFormatter {
         case .droid:     return "Droid"
         case .pi:        return "Pi"
         case .grok:      return "Grok"
-        case .cli:       return "Agent"
-        case .unknown:   return "Agent"
+        case .cli:       return String(localized: "Agent")
+        case .unknown:   return String(localized: "Agent")
         }
     }
 
@@ -33,7 +33,7 @@ public enum TickerFormatter {
         if let m = session.message, !m.trimmingCharacters(in: .whitespaces).isEmpty {
             msg = m
         } else {
-            msg = session.state.rawValue.capitalized
+            msg = session.state.label
         }
         return "\(label) [\(project)] → \(msg)"
     }
@@ -42,12 +42,14 @@ public enum TickerFormatter {
     /// rather than read, so the boundaries are testable.
     public static func elapsed(since: Date, now: Date) -> String {
         let seconds = max(0, Int(now.timeIntervalSince(since)))
-        if seconds < 60 { return "\(seconds)s" }
+        if seconds < 60 { return String(localized: "\(seconds)s") }
         let minutes = seconds / 60
-        if minutes < 60 { return "\(minutes)m" }
+        if minutes < 60 { return String(localized: "\(minutes)m") }
         let hours = minutes / 60
         let remainder = minutes % 60
-        return remainder == 0 ? "\(hours)h" : "\(hours)h \(remainder)m"
+        return remainder == 0
+            ? String(localized: "\(hours)h")
+            : String(localized: "\(hours)h \(remainder)m")
     }
 
     /// Compact token count: "512", "3.4k", "847k", "1.2M".

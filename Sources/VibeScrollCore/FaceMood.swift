@@ -217,19 +217,25 @@ public enum FaceMood {
         public var summary: String {
             switch self {
             case .steady(let state):
-                return state.flatMap(ActivitySummary.stateMessage(for:)) ?? "Nothing running"
+                return state.flatMap(ActivitySummary.stateMessage(for:))
+                    ?? String(localized: "Nothing running")
             case .overBudget(let used, let elapsed):
-                return "Weekly \(used)% spent, \(elapsed)% of the week gone"
+                return String(localized: "Weekly \(used)% spent, \(elapsed)% of the week gone")
             case .circling(let topic, let minutes):
-                return "Circling \(topic?.fallbackLabel.lowercased() ?? "one topic") for \(minutes) min"
+                guard let topic else {
+                    return String(localized: "Circling one topic for \(minutes) min")
+                }
+                return String(localized: "Circling \(topic.label.localizedLowercase) for \(minutes) min")
             case .longSession(let minutes):
                 return minutes >= 60
-                    ? "\(minutes / 60)h \(minutes % 60)m in"
-                    : "\(minutes)m in"
+                    ? String(localized: "\(minutes / 60)h \(minutes % 60)m in")
+                    : String(localized: "\(minutes)m in")
             case .rateLimited(let count):
-                return "\(count) rate limit\(count == 1 ? "" : "s") this hour"
+                return count == 1
+                    ? String(localized: "1 rate limit this hour")
+                    : String(localized: "\(count) rate limits this hour")
             case .burningWindow(let used, let minutesLeft):
-                return "5h window \(used)% spent, \(minutesLeft) min left"
+                return String(localized: "5h window \(used)% spent, \(minutesLeft) min left")
             }
         }
     }

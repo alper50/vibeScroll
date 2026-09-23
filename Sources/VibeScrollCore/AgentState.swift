@@ -13,6 +13,17 @@ public enum AgentState: String, Codable, Sendable, CaseIterable {
     case done
     /// Done and quiet for a while; ambient/no attention needed.
     case idle
+
+    /// The state's name, in the interface's language.
+    public var label: String {
+        switch self {
+        case .registered: return String(localized: "Registered")
+        case .working:    return String(localized: "Working")
+        case .waiting:    return String(localized: "Waiting")
+        case .done:       return String(localized: "Done")
+        case .idle:       return String(localized: "Idle")
+        }
+    }
 }
 
 /// Which agent a session belongs to.

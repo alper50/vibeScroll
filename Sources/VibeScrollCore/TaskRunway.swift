@@ -90,27 +90,27 @@ public enum TaskRunway {
         public var summary: String {
             switch self {
             case .queueEmpty:
-                return "Nothing queued"
+                return String(localized: "Nothing queued")
             case .taskAlreadyRunning:
-                return "A task is running"
+                return String(localized: "A task is running")
             case .dailyLimitReached(let started, let limit):
-                return "Daily limit reached (\(started)/\(limit))"
+                return String(localized: "Daily limit reached (\(started)/\(limit))")
             case .quotaUnavailable:
-                return "No quota reading \u{2014} turn on the quota check in General"
+                return String(localized: "No quota reading \u{2014} turn on the quota check in General")
             case .quotaStale(let age):
-                return "Quota reading is \(Int(age / 60)) min old"
+                return String(localized: "Quota reading is \(Int(age / 60)) min old")
             case .sessionWindowSpent(let percent):
-                return "Session window \(percent)% spent"
+                return String(localized: "Session window \(percent)% spent")
             case .weeklyReserve(let percent, let reserve):
-                return "Weekly at \(percent)%, holding the last \(100 - reserve)%"
+                return String(localized: "Weekly at \(percent)%, holding the last \(100 - reserve)%")
             case .aheadOfPace(let used, let elapsed):
-                return "Weekly \(used)% spent, \(elapsed)% of the week gone"
+                return String(localized: "Weekly \(used)% spent, \(elapsed)% of the week gone")
             case .agentBusy:
-                return "Your own agent is working"
+                return String(localized: "Your own agent is working")
             case .userActive:
-                return "You are at the keyboard"
+                return String(localized: "You are at the keyboard")
             case .cooldown(let remaining):
-                return "Cooling down (\(Int(remaining))s)"
+                return String(localized: "Cooling down (\(Int(remaining))s)")
             }
         }
     }
@@ -127,7 +127,7 @@ public enum TaskRunway {
         /// `FaceMood.Reason.summary`.
         public var summary: String {
             switch self {
-            case .launch:           return "Ready to run"
+            case .launch:           return String(localized: "Ready to run")
             case .hold(let reason): return reason.summary
             }
         }

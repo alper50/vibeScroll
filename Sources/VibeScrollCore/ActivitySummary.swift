@@ -16,62 +16,82 @@ public enum ActivitySummary {
         // A Notification event carries the agent's own words — always better
         // than anything we could synthesise.
         if eventName == "Notification" { return trimmed(explicitMessage) }
-        if eventName == "UserPromptSubmit" { return "Reading your prompt" }
+        if eventName == "UserPromptSubmit" { return String(localized: "Reading your prompt") }
         if let line = toolLine(toolName: toolName, toolInput: toolInput) { return line }
         return trimmed(explicitMessage)
     }
 
     private static func toolLine(toolName: String?, toolInput: ToolActivityInput?) -> String? {
         guard let toolName, !toolName.isEmpty else { return nil }
-        let verb = CategoryResolver.category(toolName: toolName, target: toolInput?.target)
-            .map(verbFor) ?? "Using \(toolName)"
+        let topic = CategoryResolver.category(toolName: toolName, target: toolInput?.target)
 
+        let object: String?
         if let command = toolInput?.command, !command.isEmpty {
-            return "\(verb) \(shorten(firstLine(command), to: 48))"
-        }
-        if let path = toolInput?.filePath, !path.isEmpty {
-            return "\(verb) \((path as NSString).lastPathComponent)"
-        }
-        if let pattern = toolInput?.pattern ?? toolInput?.query, !pattern.isEmpty {
-            return "\(verb) \"\(shorten(pattern, to: 32))\""
-        }
-        if let description = toolInput?.description, !description.isEmpty {
+            object = shorten(firstLine(command), to: 48)
+        } else if let path = toolInput?.filePath, !path.isEmpty {
+            object = (path as NSString).lastPathComponent
+        } else if let pattern = toolInput?.pattern ?? toolInput?.query, !pattern.isEmpty {
+            object = "\"\(shorten(pattern, to: 32))\""
+        } else if let description = toolInput?.description, !description.isEmpty {
             return shorten(description, to: 60)
+        } else {
+            object = nil
         }
-        return verb
+
+        guard let topic else {
+            return object.map { String(localized: "Using \(toolName) \($0)") }
+                ?? String(localized: "Using \(toolName)")
+        }
+        return object.map { phrase(for: topic, object: $0) } ?? verb(for: topic)
     }
 
-    private static func verbFor(_ topic: TopicCategory) -> String {
+    /// The verb on its own, for a tool call with nothing to name.
+    private static func verb(for topic: TopicCategory) -> String {
         switch topic {
-        case .reading:        return "Reading"
-        case .writing:        return "Editing"
-        case .running:        return "Running"
-        case .searching:      return "Searching"
-        case .testing:        return "Testing"
-        case .versionControl: return "Running"
-        case .dependencies:   return "Installing"
-        case .docs:           return "Writing docs"
-        case .config:         return "Editing config"
-        case .debugging:      return "Debugging"
-        case .delegating:     return "Delegating"
-        case .research:       return "Fetching"
-        case .generic:        return "Working on"
-        // Unreachable: this describes what an agent is doing, and
-        // `CategoryResolver` cannot resolve one of these. Listed explicitly
-        // rather than caught by a `default`, so a real work topic added later
-        // still fails to compile here instead of silently reading "Working on".
-        case .gameOfThrones, .breakingBad, .strangerThings, .theOffice:
-            return "Working on"
+        case .reading:        return String(localized: "Reading")
+        case .writing:        return String(localized: "Editing")
+        case .running:        return String(localized: "Running")
+        case .searching:      return String(localized: "Searching")
+        case .testing:        return String(localized: "Testing")
+        case .versionControl: return String(localized: "Running")
+        case .dependencies:   return String(localized: "Installing")
+        case .docs:           return String(localized: "Writing docs")
+        case .config:         return String(localized: "Editing config")
+        case .debugging:      return String(localized: "Debugging")
+        case .delegating:     return String(localized: "Delegating")
+        case .research:       return String(localized: "Fetching")
+        case .generic:        return String(localized: "Working on")
+        }
+    }
+
+    /// The verb with what it acts on, as one localizable sentence rather than
+    /// two strings glued together: word order is the translator's call, and in
+    /// Turkish the object comes first ("Store.swift düzenleniyor").
+    private static func phrase(for topic: TopicCategory, object: String) -> String {
+        switch topic {
+        case .reading:        return String(localized: "Reading \(object)")
+        case .writing:        return String(localized: "Editing \(object)")
+        case .running:        return String(localized: "Running \(object)")
+        case .searching:      return String(localized: "Searching \(object)")
+        case .testing:        return String(localized: "Testing \(object)")
+        case .versionControl: return String(localized: "Running \(object)")
+        case .dependencies:   return String(localized: "Installing \(object)")
+        case .docs:           return String(localized: "Writing docs \(object)")
+        case .config:         return String(localized: "Editing config \(object)")
+        case .debugging:      return String(localized: "Debugging \(object)")
+        case .delegating:     return String(localized: "Delegating \(object)")
+        case .research:       return String(localized: "Fetching \(object)")
+        case .generic:        return String(localized: "Working on \(object)")
         }
     }
 
     /// State line used when there is no tool activity to describe.
     public static func stateMessage(for state: AgentState) -> String? {
         switch state {
-        case .working:    return "Working"
-        case .waiting:    return "Waiting for you"
-        case .done:       return "Finished"
-        case .registered: return "Ready"
+        case .working:    return String(localized: "Working")
+        case .waiting:    return String(localized: "Waiting for you")
+        case .done:       return String(localized: "Finished")
+        case .registered: return String(localized: "Ready")
         case .idle:       return nil
         }
     }

@@ -59,7 +59,7 @@ final class TaskQueueStore: ObservableObject {
     func remove(id: String, force: Bool = false) -> Removal {
         guard let task = queue.task(id: id) else { return .removed }
         guard task.status != .running else {
-            return .failed("This task is still running.")
+            return .failed(String(localized: "This task is still running."))
         }
 
         if let path = task.worktreePath {
@@ -165,7 +165,7 @@ final class TaskQueueStore: ObservableObject {
     private func load() {
         guard let data = try? Data(contentsOf: fileURL) else { return }
         guard let decoded = try? JSONDecoder().decode(TaskQueue.self, from: data) else {
-            lastError = "queue.json could not be read; starting from an empty queue."
+            lastError = String(localized: "queue.json could not be read; starting from an empty queue.")
             return
         }
         queue = decoded

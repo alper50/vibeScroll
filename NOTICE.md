@@ -33,7 +33,8 @@ Written for this project, with no AgentPet counterpart:
 | Area | Files |
 | --- | --- |
 | Topic model | `TopicCategory`, `CategoryResolver`, `ActivitySummary` |
-| Content | `InfoCard`, `ContentStore`, and the whole `vibeScroll-backend` repository |
+| Content | `CardCategory`, `InfoCard`, `ContentStore`, and the whole `vibeScroll-backend` repository |
+| Languages | `ContentLanguage`, the string catalogue and `scripts/sync-strings.sh` / `check-strings.py` |
 | Pacing and presentation | `CardScheduler`, `CardController`, `CardLayout`, `CardWindowController`, `InfoCardView` |
 | Typewriter reveal | `TypewriterReveal`, `TypewriterModel` |
 | Sounds | `SoundSelection`, `SoundSettings` |

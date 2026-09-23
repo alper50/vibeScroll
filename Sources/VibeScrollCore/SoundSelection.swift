@@ -76,7 +76,7 @@ public enum SoundSelection: Equatable, Hashable, Sendable {
     /// Label for the picker.
     public var displayName: String {
         switch self {
-        case .silent: return "None"
+        case .silent: return String(localized: "None")
         case .system(let name): return name
         case .bundled(let name): return name
         case .custom(let url): return url.deletingPathExtension().lastPathComponent

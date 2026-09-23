@@ -64,7 +64,7 @@ private struct FacePreview: View {
             Divider()
 
             Form {
-                Section("Scenario \u{2014} real FaceMood output") {
+                Section(verbatim("Scenario \u{2014} real FaceMood output")) {
                     // Two columns of buttons rather than a picker: comparing
                     // them means clicking back and forth quickly.
                     ForEach(Self.scenarios, id: \.name) { item in
@@ -72,9 +72,9 @@ private struct FacePreview: View {
                             Text(item.name)
                             Spacer()
                             if scenario == item.name {
-                                Text("shown").font(.caption).foregroundStyle(.secondary)
+                                Text(verbatim: "shown").font(.caption).foregroundStyle(.secondary)
                             }
-                            Button("Apply") {
+                            Button(verbatim("Apply")) {
                                 scenario = item.name
                                 expression = FaceMood.expression(for: item.inputs(now), now: now)
                             }
@@ -82,7 +82,7 @@ private struct FacePreview: View {
                     }
                 }
 
-                Section("Reactions") {
+                Section(verbatim("Reactions")) {
                     HStack {
                         ForEach(FaceReaction.allCases, id: \.self) { reaction in
                             Button(String(describing: reaction).capitalized) {
@@ -103,9 +103,9 @@ private struct FacePreview: View {
                     slider("Mouth open", $expression.mouthOpen, 0...1)
                     slider("Tongue", $expression.tongue, 0...1)
                 } header: {
-                    Text("Parameters")
+                    Text(verbatim: "Parameters")
                 } footer: {
-                    Text("Energy drives the blink rate. The preview reads it from the panel's own face model, so the pace here is the pace you will get.")
+                    Text(verbatim: "Energy drives the blink rate. The preview reads it from the panel's own face model, so the pace here is the pace you will get.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -217,3 +217,8 @@ private struct FacePreview: View {
         },
     ]
 }
+
+/// A developer tool's labels, kept out of the string catalogue: passing a
+/// `String` rather than a literal selects SwiftUI's verbatim initialisers, so
+/// nobody is asked to translate a window only `vibescroll face` ever opens.
+private func verbatim(_ text: String) -> String { text }

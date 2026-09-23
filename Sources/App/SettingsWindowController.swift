@@ -31,7 +31,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = "vibeScroll Settings"
+        window.title = String(localized: "vibeScroll Settings")
         window.contentView = NSHostingView(rootView: SettingsView())
         window.center()
         // Closing settings must not deallocate the window: the next click would

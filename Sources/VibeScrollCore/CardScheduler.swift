@@ -2,6 +2,11 @@ import Foundation
 
 /// Decides *whether* to surface a card right now and *which* one.
 ///
+/// Two vocabularies meet here. The *when* is driven by the agent's activity
+/// (`TopicCategory`); the *which* is drawn from the catalogue (`CardCategory`).
+/// They are independent on purpose — what the agent is doing sets the rhythm,
+/// not the subject.
+///
 /// The failure mode this exists to prevent: an agent fires tool events several
 /// times a second, so a naive "topic changed → show a card" would strobe. Four
 /// gates, all deterministic and `now`-injected so every rule is unit-testable:
@@ -10,7 +15,8 @@ import Foundation
 ///     counts as "what the user is actually doing".
 ///  2. **Global cooldown** — a minimum gap between any two cards, whatever the
 ///     topic, so the surface never feels chatty.
-///  3. **Per-topic cooldown** — the same topic can't teach again for a while.
+///  3. **Per-topic cooldown** — the same activity can't trigger again for a
+///     while, so a long debugging stretch is one card, not one every gap.
 ///  4. **Card repeat window** — a specific card id isn't shown twice inside
 ///     `cardRepeatWindow`, so the user sees the whole pool before repeats.
 ///
@@ -23,7 +29,7 @@ public final class CardScheduler {
         public var minimumDwell: TimeInterval
         /// Minimum gap between any two cards.
         public var globalCooldown: TimeInterval
-        /// Minimum gap between two cards of the same topic.
+        /// Minimum gap between two cards triggered by the same activity.
         public var topicCooldown: TimeInterval
         /// How long a specific card id stays suppressed after being shown.
         public var cardRepeatWindow: TimeInterval
@@ -107,23 +113,23 @@ public final class CardScheduler {
     /// the user asked for the next card, so they get one.
     ///
     /// Three tiers, in order:
-    ///  1. Unseen material in `topic`, so browsing stays on what the agent is
-    ///     actually doing.
-    ///  2. Unseen material anywhere else, once the topic is exhausted.
+    ///  1. Unseen material in `category`, so browsing stays on the show being
+    ///     read.
+    ///  2. Unseen material anywhere else, once that category is exhausted.
     ///  3. The least recently shown card of all, ignoring repeat windows.
     ///
     /// Tier 3 is what stops the button dead-ending: once the user has seen the
     /// whole catalogue, Next cycles the oldest material rather than going inert.
     /// Returns `nil` only when there is genuinely nothing else to show.
     public func advance(
-        from all: [InfoCard], topic: TopicCategory?, excluding currentID: String?, now: Date
+        from all: [InfoCard], category: CardCategory?, excluding currentID: String?, now: Date
     ) -> InfoCard? {
         let pool = all.filter { $0.id != currentID }
         guard !pool.isEmpty else { return nil }
 
-        if let topic {
-            if let hit = pick(from: pool.filter { $0.category == topic }, now: now) { return hit }
-            if let hit = pick(from: pool.filter { $0.category != topic }, now: now) { return hit }
+        if let category {
+            if let hit = pick(from: pool.filter { $0.category == category }, now: now) { return hit }
+            if let hit = pick(from: pool.filter { $0.category != category }, now: now) { return hit }
         } else if let hit = pick(from: pool, now: now) {
             return hit
         }
@@ -133,9 +139,13 @@ public final class CardScheduler {
     /// Records that `card` was actually shown. Must be called by the presenter,
     /// not by `pick`, so a card that was selected but suppressed downstream
     /// (window hidden, user muted) doesn't burn its repeat window.
-    public func recordShown(_ card: InfoCard, now: Date) {
+    ///
+    /// `topic` is the activity that triggered it, and starts that activity's
+    /// cooldown. A card the user browsed to has none: reading is not the agent
+    /// doing anything, so it holds back the global gap but no topic.
+    public func recordShown(_ card: InfoCard, topic: TopicCategory? = nil, now: Date) {
         lastCardAt = now
-        lastTopicAt[card.category] = now
+        if let topic { lastTopicAt[topic] = now }
         lastShownAt[card.id] = now
     }
 
@@ -146,7 +156,7 @@ public final class CardScheduler {
     ) -> InfoCard? {
         guard mayShow(topic: topic, topicSince: topicSince, now: now) else { return nil }
         guard let card = pick(from: candidates, now: now) else { return nil }
-        recordShown(card, now: now)
+        recordShown(card, topic: topic, now: now)
         return card
     }
 }

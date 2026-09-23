@@ -111,7 +111,7 @@ final class TaskRunner: ObservableObject {
         let project = ProjectPath.displayName(task.projectPath)
         CardController.shared.raise(.taskStarted(project: task.projectPath), now: now)
         NotificationManager.shared.notify(
-            title: "\(project): queue started a task",
+            title: String(localized: "\(project): queue started a task"),
             body: Self.firstLine(task.prompt))
         run(task, policy: policy)
     }
@@ -123,14 +123,14 @@ final class TaskRunner: ObservableObject {
 
         guard let executable = Self.discoverExecutable() else {
             fail(task, .launchFailed, policy: policy,
-                 message: "Claude Code executable not found. Set its path in Settings \u{203A} Tasks.")
+                 message: String(localized: "Claude Code executable not found. Set its path in Settings \u{203A} Tasks."))
             return
         }
         // A repository with no commit has no HEAD to branch from, so there is
         // nothing to make a worktree out of.
         guard Git.hasCommits(at: task.projectPath) else {
             fail(task, .notAGitRepo, policy: policy,
-                 message: "\(task.projectPath) is not a git repository with any commits.")
+                 message: String(localized: "\(task.projectPath) is not a git repository with any commits."))
             return
         }
 
@@ -148,7 +148,7 @@ final class TaskRunner: ObservableObject {
             systemPromptSuffix: systemPromptSuffix)
         else {
             fail(task, .launchFailed, policy: policy,
-                 message: "No headless invocation is known for \(task.agentKind.rawValue).")
+                 message: String(localized: "No headless invocation is known for \(task.agentKind.rawValue)."))
             return
         }
 
@@ -207,13 +207,13 @@ final class TaskRunner: ObservableObject {
         let project = ProjectPath.displayName(task.projectPath)
         guard let failure else {
             NotificationManager.shared.notify(
-                title: "\(project): task finished",
+                title: String(localized: "\(project): task finished"),
                 body: result?.text ?? Self.firstLine(task.prompt))
             SoundSettings.shared.play(.done)
             return
         }
         NotificationManager.shared.notify(
-            title: "\(project): task \(Self.label(for: failure))",
+            title: String(localized: "\(project): task \(Self.label(for: failure))"),
             body: Self.firstLine(task.prompt))
         // A rate-limited task is going back in line rather than needing
         // attention, so it gets the quota sound rather than the alert one.
@@ -222,13 +222,13 @@ final class TaskRunner: ObservableObject {
 
     static func label(for failure: QueuedTask.Failure) -> String {
         switch failure {
-        case .rateLimit:        return "hit a rate limit"
-        case .agentError:       return "failed"
-        case .nonZeroExit:      return "exited with an error"
-        case .unreadableResult: return "produced no readable result"
-        case .timedOut:         return "timed out"
-        case .launchFailed:     return "could not start"
-        case .notAGitRepo:      return "has no git repository"
+        case .rateLimit:        return String(localized: "hit a rate limit")
+        case .agentError:       return String(localized: "failed")
+        case .nonZeroExit:      return String(localized: "exited with an error")
+        case .unreadableResult: return String(localized: "produced no readable result")
+        case .timedOut:         return String(localized: "timed out")
+        case .launchFailed:     return String(localized: "could not start")
+        case .notAGitRepo:      return String(localized: "has no git repository")
         }
     }
 
@@ -243,7 +243,7 @@ final class TaskRunner: ObservableObject {
         guard Git.addWorktree(project: project, path: worktree.path, branch: worktree.branch) else {
             write(log + "worktree creation failed\n", to: logPath)
             return Outcome(failure: .launchFailed, exitCode: nil, result: nil,
-                           note: "Could not create the worktree at \(worktree.path).")
+                           note: String(localized: "Could not create the worktree at \(worktree.path)."))
         }
 
         log += "$ \(launch.executable) \(launch.arguments.joined(separator: " "))\n\n"
@@ -269,7 +269,7 @@ final class TaskRunner: ObservableObject {
                 // The work is still there and still the point; only the tidy-up
                 // failed, so this is reported rather than turned into a failure.
                 log += "\n--- commit failed: \(reason) ---\n"
-                note = "Task finished but the commit failed: \(reason)"
+                note = String(localized: "Task finished but the commit failed: \(reason)")
             }
         }
 
