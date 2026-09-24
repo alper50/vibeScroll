@@ -42,6 +42,7 @@ private final class PreviewDelegate: NSObject, NSApplicationDelegate {
 private struct FacePreview: View {
     @State private var expression = FaceMood.base(for: .working)
     @StateObject private var blink = BlinkModel()
+    @ObservedObject private var tongue = TongueModel.shared
     @ObservedObject private var reaction = ReactionModel.shared
 
     private var reacted: FaceExpression {
@@ -54,12 +55,18 @@ private struct FacePreview: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            FaceView(expression: reacted, blink: blink.amount)
+            FaceView(expression: reacted, blink: blink.amount, tongue: tongue.pose)
                 .frame(height: 190)
                 .frame(maxWidth: .infinity)
                 .background(.regularMaterial)
                 .animation(.easeInOut(duration: 0.35), value: expression)
-                .onAppear { blink.start() }
+                .onAppear {
+                    blink.start()
+                    // No mood model here, so the tongue is always free to move;
+                    // it only draws when the slider has it out.
+                    tongue.isShowing = { true }
+                    tongue.start()
+                }
 
             Divider()
 

@@ -12,6 +12,19 @@ import VibeScrollCore
 /// Each element is driven by exactly one field of the expression. That is what
 /// keeps the drawing debuggable: if the face looks wrong, one number is wrong,
 /// and the preview (`vibescroll face`) shows which.
+///
+/// **Drawn for the size it is seen at.** The face lands at about 50pt on
+/// screen, where an eye is a few points across. An earlier version chased
+/// realism at that size — almond eyes with pointed corners, brows and a mouth
+/// that tapered to a tip, an engraved double outline — and every one of those
+/// details fell below a pixel and came out as jaggies and halo. So the rules
+/// here are the ones small icons follow:
+///
+/// - **No points.** Every end is a round cap, every corner a round join.
+/// - **A minimum weight.** Lines are about 1.7pt on screen, never thinner, so
+///   they stay solid on a non-Retina display too.
+/// - **One layer.** No ghost copies for depth: the orb is lit, the features
+///   are ink on it.
 struct FaceView: View {
     var expression: FaceExpression
     /// 0 open … 1 fully shut. Kept out of the expression because a blink is not
@@ -20,37 +33,30 @@ struct FaceView: View {
     /// Where the eyes are pointed, -1…1 on each axis. Out of the expression for
     /// the same reason as the blink: looking at the pointer is not a mood.
     var gaze: CGSize = .zero
+    /// Where the tongue's tip is, when it is out. The fidget, kept out of the
+    /// expression for the same reason as the blink and the gaze — see
+    /// `TongueModel`.
+    var tongue: TonguePose = .rest
 
     /// Design canvas. Everything is expressed against this and scaled once, so
-    /// the same face works in a 110pt strip and in the preview at 3×.
+    /// the same face works in the 74pt orb and in the preview at 3×. At the
+    /// orb's size one design point is about half a screen point, which is what
+    /// the weights below are chosen against.
     static let designSize = CGSize(width: 96, height: 72)
 
-    /// How far the engraving's two ghosts sit from the features, in design
-    /// points. Light below and dark above, which is what a groove cut into a
-    /// surface lit from above looks like — the far wall of the groove catches
-    /// the light, the near lip casts into it.
-    ///
-    /// Deliberately under a point each. The face is drawn at roughly half this
-    /// canvas on screen, so these land at a fraction of a pixel and read as
-    /// weight rather than as outlines. Anything heavier and the features get a
-    /// white halo, which on a translucent material looks like dirt rather than
-    /// depth.
-    private static let engraveDrop: CGFloat = 0.85
-    private static let engraveRise: CGFloat = 0.5
+    /// Stroke weight for brows and mouth, in design points (~1.7pt on screen).
+    private static let lineWeight: CGFloat = 3.3
 
     var body: some View {
         GeometryReader { geometry in
             let scale = min(geometry.size.width / Self.designSize.width,
                             geometry.size.height / Self.designSize.height)
             ZStack {
-                features
-                    .foregroundStyle(Color.white.opacity(0.20))
-                    .offset(y: Self.engraveDrop)
-                features
-                    .foregroundStyle(Color.black.opacity(0.11))
-                    .offset(y: -Self.engraveRise)
-                features
-                    .foregroundStyle(tint)
+                brow(side: -1)
+                brow(side: 1)
+                eye(side: -1)
+                eye(side: 1)
+                mouth
             }
             .frame(width: Self.designSize.width, height: Self.designSize.height)
             .scaleEffect(scale)
@@ -58,66 +64,51 @@ struct FaceView: View {
         }
     }
 
-    /// The features themselves, drawn three times: twice as the engraving's
-    /// ghosts and once in the accent colour. Grouped rather than engraved
-    /// shape by shape so the offsets cannot drift apart between features.
-    private var features: some View {
-        ZStack {
-            brow(side: -1)
-            brow(side: 1)
-            eye(side: -1)
-            eye(side: 1)
-            mouth
-        }
-    }
-
     // MARK: - Colour
 
-    /// Calm reads in the accent colour; strain warms it. Colour carries the
-    /// tension rather than adding a glyph for it, so the face stays five shapes
-    /// and cannot drift into a cartoon.
+    /// Calm reads in the accent colour; strain warms it.
+    ///
+    /// Mixed in OKLCH and around the hue wheel rather than straight across in
+    /// RGB. Blue and orange are near-complements, so a straight mix passes
+    /// through grey — the muddy mauve the first version showed under strain,
+    /// which read as ill rather than tense. Turning the hue keeps the colour
+    /// saturated the whole way: blue, through magenta and red, to orange.
     private var tint: Color {
-        let base = NSColor.controlAccentColor
-        let warm = NSColor.systemOrange
-        let blended = base.blended(withFraction: expression.strain, of: warm) ?? base
-        return Color(nsColor: blended)
+        Color(nsColor: FaceInk.mix(NSColor.controlAccentColor, NSColor.systemOrange,
+                                   amount: expression.strain))
     }
+
+    /// Inside an open mouth: the ink, much darker, so the opening reads as a
+    /// hole rather than as a filled shape.
+    private var mouthInterior: Color {
+        Color(nsColor: FaceInk.darkened(NSColor.controlAccentColor, by: 0.55))
+    }
+
+    /// Its own colour, or it disappears into the mouth it is sitting in.
+    private static let tongueColor = Color(red: 0.98, green: 0.47, blue: 0.56)
+    /// The groove down the middle: the same pink, deeper. It is what turns a
+    /// flat pink shape into something with a surface.
+    private static let tongueGroove = Color(red: 0.82, green: 0.29, blue: 0.40)
 
     // MARK: - Eyes
 
-    private static let eyeOffsetX: CGFloat = 19
-    private static let eyeCentreY: CGFloat = -5
-    private static let eyeWidth: CGFloat = 16
-    private static let eyeHeight: CGFloat = 22
+    private static let eyeOffsetX: CGFloat = 17
+    private static let eyeCentreY: CGFloat = -4
+    private static let eyeWidth: CGFloat = 11
+    private static let eyeHeight: CGFloat = 15
     /// How far a full look moves the eyes, in design points. Small on purpose:
     /// with no iris to slide, the whole shape travels, and a shape that moves
     /// far stops reading as an eye looking and starts reading as an eye coming
     /// loose from the face.
-    private static let gazeRangeX: CGFloat = 2.6
-    private static let gazeRangeY: CGFloat = 1.8
+    private static let gazeRangeX: CGFloat = 2.2
+    private static let gazeRangeY: CGFloat = 1.6
 
-    /// The frame is fixed and the shape draws inside it, rather than the frame
-    /// shrinking as the eye closes. Nothing is re-laid-out on a blink, and the
-    /// corners stay put — an eye whose corners move is a shape changing size,
-    /// not a lid coming down.
     private func eye(side: CGFloat) -> some View {
-        // `side` is +1 on the right of the face, and that eye's inner corner —
-        // the one by the nose — is on the left of its own rect.
         let openness = expression.eyeOpenness * (1 - min(max(blink, 0), 1))
-        let shape = EyeShape(openness: openness, innerLeading: side > 0)
-
         return ZStack {
-            shape
-            // Punched out rather than painted on: the hole shows the orb
-            // behind, so the highlight is whatever the material is doing at
-            // that moment and the face stays a single colour. `destinationOut`
-            // rather than an even-odd hole because it cannot misfire — a
-            // highlight that strays past the lid removes nothing instead of
-            // drawing a stray crescent outside the eye.
-            EyeCatchlightShape(openness: openness, innerLeading: side > 0)
-                .blendMode(.destinationOut)
+            EyeShape(openness: openness).fill(tint)
+            EyeCatchlightShape(openness: openness).fill(Color.white.opacity(0.92))
         }
-        .compositingGroup()
         .frame(width: Self.eyeWidth, height: Self.eyeHeight)
         .offset(x: side * Self.eyeOffsetX + gaze.width * Self.gazeRangeX,
                 y: Self.eyeCentreY + gaze.height * Self.gazeRangeY)
@@ -125,9 +116,9 @@ struct FaceView: View {
 
     // MARK: - Brows
 
-    private static let browWidth: CGFloat = 18
-    private static let browHeight: CGFloat = 5
-    private static let browRestY: CGFloat = -22
+    private static let browWidth: CGFloat = 14
+    private static let browHeight: CGFloat = 4
+    private static let browRestY: CGFloat = -19
 
     /// One axis carries both height and tilt, because they move together on a
     /// real face: raised brows are high and *level*, a furrowed pair is low
@@ -137,16 +128,14 @@ struct FaceView: View {
         // Negative y is up, so a positive angle lifts. Skew lifts one and drops
         // the other: `side` is +1 on the right, which is the one a positive
         // skew raises.
-        let lift = -angle * 7 - expression.browSkew * side * 6
+        let lift = -angle * 5 - expression.browSkew * side * 4.5
         // Tilt only ever furrows. Rotating in the positive direction too would
         // raise the inner ends, which is the sad brow, not the alert one — the
         // two are opposite expressions and only one of them belongs on a face
         // that is paying attention.
-        let tilt = Angle.degrees(min(angle, 0) * 15 * side)
-        // `side` is -1 on the left of the face, where the inner end is the
-        // right one. The shape mirrors itself rather than being flipped by a
-        // transform, which would also invert the rotation above.
-        return BrowShape(thickEndLeading: side > 0)
+        let tilt = Angle.degrees(min(angle, 0) * 16 * side)
+        return BrowShape()
+            .stroke(tint, style: StrokeStyle(lineWidth: Self.lineWeight, lineCap: .round))
             .frame(width: Self.browWidth, height: Self.browHeight)
             .rotationEffect(tilt)
             .offset(x: side * Self.eyeOffsetX, y: Self.browRestY + lift)
@@ -154,177 +143,95 @@ struct FaceView: View {
 
     // MARK: - Mouth
 
-    private static let mouthWidth: CGFloat = 38
-    private static let mouthHeight: CGFloat = 18
-    private static let mouthY: CGFloat = 22
+    private static let mouthWidth: CGFloat = 26
+    private static let mouthHeight: CGFloat = 20
+    private static let mouthY: CGFloat = 19
 
-    @ViewBuilder
     private var mouth: some View {
-        // The tongue is drawn first so the mouth's own outline sits over it,
-        // which is what makes it read as coming from inside rather than being
-        // stuck on the chin.
-        if expression.tongue > 0.01 {
-            TongueShape()
-                .opacity(0.85)
-                .frame(width: Self.mouthWidth * 0.40,
-                       height: Self.mouthHeight * 0.85 * expression.tongue)
-                .offset(y: Self.mouthY + Self.mouthHeight * 0.34)
+        let shape = MouthShape(curve: expression.mouthCurve, open: expression.mouthOpen)
+        // Faded in with the opening rather than switched on at a threshold, so
+        // a mouth that opens while animating grows a hole instead of popping one.
+        let interior = min(max(expression.mouthOpen * 5, 0), 1)
+        let tongueShape = TongueShape(curve: expression.mouthCurve, open: expression.mouthOpen,
+                                      amount: expression.tongue, pose: tongue)
+        let lipStyle = StrokeStyle(lineWidth: Self.lineWeight, lineCap: .round, lineJoin: .round)
+        return ZStack {
+            shape.fill(mouthInterior).opacity(interior)
+            // A closed path stroked with round joins: the smile line when the
+            // mouth is shut, a rounded rim when it is open, and no moment where
+            // one swaps for the other.
+            shape.stroke(tint, style: lipStyle)
+            // Over the lower lip rather than clipped inside the mouth. A tongue
+            // that can only show within the opening is a pink patch sitting in
+            // a hole; one that comes out over the lip is a tongue. It is cut
+            // off above the upper lip, which is all that stops it floating
+            // over the face when the mouth frowns.
+            ZStack {
+                tongueShape.fill(Self.tongueColor)
+                TongueGrooveShape(tongue: tongueShape)
+                    .stroke(Self.tongueGroove.opacity(0.55),
+                            style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+            }
+            .clipShape(BelowUpperLipShape(curve: expression.mouthCurve,
+                                          open: expression.mouthOpen))
+            // The upper lip once more, over the tongue's root, so it comes out
+            // from under the lip instead of being pasted on top of the mouth.
+            UpperLipShape(curve: expression.mouthCurve, open: expression.mouthOpen)
+                .stroke(tint, style: lipStyle)
         }
-        MouthShape(curve: expression.mouthCurve, open: expression.mouthOpen)
-            .frame(width: Self.mouthWidth, height: Self.mouthHeight)
-            .offset(y: Self.mouthY)
+        .frame(width: Self.mouthWidth, height: Self.mouthHeight)
+        .offset(y: Self.mouthY)
     }
 }
 
-/// An eye, drawn as two arcs meeting at the corners.
+// MARK: - Shapes
+
+/// An eye: a solid capsule whose lid comes down from the top.
 ///
-/// A capsule was the obvious shape and it reads as a pill: flat-sided, blunt,
-/// symmetrical. A real eye tapers to points at the corners, and its upper lid
-/// travels much further than its lower one — so the two arcs are given
-/// different depths, and closing moves mostly the top. Shrinking both equally
-/// looks like an aperture rather than a blink.
-///
-/// Nothing here is symmetrical either, which is the rest of what made the first
-/// version read as a graphic rather than an eye. Three asymmetries, all small:
-/// the corner nearest the nose sits lower than the one by the temple, the upper
-/// lid's high point is pulled toward the nose, and the lower lid's dip is
-/// pushed away from it. Individually invisible; together they are the
-/// difference between an eye and a lens.
+/// Closing shrinks the height from above and settles the eye a little lower,
+/// which is what a lid does — the lower lid barely moves. Fully shut, the
+/// capsule has become a short horizontal pill: a closed eye, drawn at the same
+/// weight as everything else, with nothing swapped in.
 struct EyeShape: Shape {
     var openness: Double
-    /// True when the corner nearest the nose is on the left of this shape's own
-    /// rect — so the right eye of the face. `BrowShape` is handed its side the
-    /// same way, and for the same reason: mirroring with a transform would
-    /// flip everything applied outside along with it.
-    var innerLeading: Bool
 
     var animatableData: Double {
         get { openness }
         set { openness = newValue }
     }
 
-    /// The geometry both the outline and the catchlight are built from, so the
-    /// highlight cannot drift off the shape it is supposed to be sitting on.
-    struct Lids {
-        var left: CGPoint
-        var right: CGPoint
-        var upperControl: CGPoint
-        var lowerControl: CGPoint
-        var middle: CGFloat
-    }
-
-    static func lids(in rect: CGRect, openness: Double, innerLeading: Bool) -> Lids {
-        let open = min(max(openness, 0), 1)
-        let middle = rect.midY
-        // Deep enough that a fully open eye is taller than it is wide. The
-        // first pass used shallow arcs meeting at sharp points, which reads as
-        // a long narrow lens rather than an eye — roundness is what fixes it,
-        // not the tilt, because there is none.
-        let upper = rect.height * 0.60 * open
-        let lower = rect.height * 0.34 * open
-        // A shut eye is a line, and a line still has to be drawn or the face
-        // loses half its features every time it blinks.
-        let closed = rect.height * 0.055
-
-        // The tear duct sits lower than the outer corner. Scaled by how open
-        // the eye is so that a blink closes to a level line rather than to a
-        // slope, which would read as a wink.
-        let tilt = rect.height * 0.030 * open
-        let leftY = middle + (innerLeading ? tilt : -tilt)
-        let rightY = middle + (innerLeading ? -tilt : tilt)
-
-        // Peak toward the nose, dip away from it. Both are expressed against
-        // the rect's own left edge rather than against the inner corner, so
-        // there is one coordinate system here and no mirrored reasoning.
-        func x(fromNose t: CGFloat) -> CGFloat {
-            rect.minX + rect.width * (innerLeading ? t : 1 - t)
-        }
-
-        return Lids(
-            left: CGPoint(x: rect.minX, y: leftY),
-            right: CGPoint(x: rect.maxX, y: rightY),
-            upperControl: CGPoint(x: x(fromNose: 0.46), y: middle - upper - closed),
-            lowerControl: CGPoint(x: x(fromNose: 0.54), y: middle + lower + closed),
-            middle: middle)
-    }
-
-    /// Where the catchlight goes, in the eye's own coordinates. `nil` when the
-    /// eye is too nearly shut to hold one.
-    ///
-    /// Upper left on *both* eyes rather than mirrored, because the orb behind
-    /// the face is lit from the upper left too. Two eyes with symmetrical
-    /// highlights are two eyes lit by two lamps, which is the look of a
-    /// diagram; one lamp is what makes a face read as being in a room.
-    static func catchlight(in rect: CGRect, openness: Double, innerLeading: Bool) -> CGRect? {
-        let lids = lids(in: rect, openness: openness, innerLeading: innerLeading)
-        // Anchored to a place on screen, not to a position along the curve.
-        // Taking it at a fixed curve parameter put it in a different spot on
-        // each eye, because the two curves are mirrored — which is two lamps
-        // again, by accident.
-        let target = rect.minX + rect.width * 0.30
-        let lid = nearestOnUpperLid(toX: target, lids: lids)
-        let gap = lids.middle - lid.y
-        guard gap > 0 else { return nil }
-
-        // Sized and placed against that gap rather than against the rect, so
-        // it shrinks with the lid on the way into a blink instead of having to
-        // be switched off at some threshold.
-        let radius = min(gap * 0.20, rect.width * 0.12)
-        guard radius > 0.35 else { return nil }
-        let centre = CGPoint(x: lid.x, y: lid.y + gap * 0.55)
-        return CGRect(x: centre.x - radius, y: centre.y - radius,
-                      width: radius * 2, height: radius * 2)
-    }
-
-    /// The point on the upper lid closest to a given x.
-    ///
-    /// Sampled rather than solved. The curve's x is a quadratic in t and
-    /// inverting it is a page of algebra plus the branch where the eye is shut
-    /// and the quadratic degenerates; twenty-four samples of an arc a few
-    /// points long are accurate past what any of this is drawn at.
-    private static func nearestOnUpperLid(toX target: CGFloat, lids: Lids) -> CGPoint {
-        let steps = 24
-        var best = lids.left
-        var bestDistance = CGFloat.greatestFiniteMagnitude
-        for step in 0...steps {
-            let point = quadPoint(CGFloat(step) / CGFloat(steps),
-                                  lids.left, lids.upperControl, lids.right)
-            let distance = abs(point.x - target)
-            if distance < bestDistance {
-                bestDistance = distance
-                best = point
-            }
-        }
-        return best
-    }
-
-    private static func quadPoint(_ t: CGFloat, _ p0: CGPoint, _ c: CGPoint,
-                                  _ p1: CGPoint) -> CGPoint {
-        let u = 1 - t
-        return CGPoint(x: u * u * p0.x + 2 * u * t * c.x + t * t * p1.x,
-                       y: u * u * p0.y + 2 * u * t * c.y + t * t * p1.y)
+    /// The eye's outline in `rect`, shared with the catchlight so the two
+    /// cannot drift apart.
+    static func body(in rect: CGRect, openness: Double) -> CGRect {
+        let open = CGFloat(min(max(openness, 0), 1))
+        // The shut eye keeps a line's weight, or the face loses half its
+        // features on every blink.
+        let shut: CGFloat = 3.2
+        let height = max(shut, rect.height * open)
+        // The lower edge rises only a little as the lid falls.
+        let bottom = rect.maxY - (rect.height - height) * 0.3
+        // A drowsy eye is also slightly wider than it is tall-and-narrow open,
+        // which keeps a half-shut eye from reading as a squint.
+        let width = rect.width * (1 + (1 - open) * 0.12)
+        return CGRect(x: rect.midX - width / 2, y: bottom - height,
+                      width: width, height: height)
     }
 
     func path(in rect: CGRect) -> Path {
-        let lids = Self.lids(in: rect, openness: openness, innerLeading: innerLeading)
-        var path = Path()
-        path.move(to: lids.left)
-        path.addQuadCurve(to: lids.right, control: lids.upperControl)
-        path.addQuadCurve(to: lids.left, control: lids.lowerControl)
-        path.closeSubpath()
-        return path
+        let eye = Self.body(in: rect, openness: openness)
+        return Path(roundedRect: eye, cornerRadius: min(eye.width, eye.height) / 2)
     }
 }
 
-/// The catchlight, as a shape rather than a circle positioned by the view.
+/// The catchlight: one soft dot, upper left on *both* eyes.
 ///
-/// It has to be a `Shape` so that it carries `openness` as `animatableData`
-/// like the lid does. Computed in a view body instead, it would be sized once
-/// per re-render while the lid interpolated past it — the highlight sitting
-/// still at full size through a blink, then disappearing.
+/// Not mirrored, because the orb behind is lit from the upper left too — two
+/// eyes with symmetrical highlights are two eyes lit by two lamps. Big enough
+/// to be a highlight at the size the face is seen (about 1.5pt), where the
+/// previous one was a speck. It shrinks with the lid and is gone before the
+/// eye is a line, so it never floats outside a closing eye.
 struct EyeCatchlightShape: Shape {
     var openness: Double
-    var innerLeading: Bool
 
     var animatableData: Double {
         get { openness }
@@ -332,47 +239,200 @@ struct EyeCatchlightShape: Shape {
     }
 
     func path(in rect: CGRect) -> Path {
-        guard let spot = EyeShape.catchlight(in: rect, openness: openness,
-                                             innerLeading: innerLeading)
-        else { return Path() }
-        return Path(ellipseIn: spot)
+        let eye = EyeShape.body(in: rect, openness: openness)
+        let radius = min(eye.width * 0.17, (eye.height - 6) * 0.25)
+        guard radius > 0.8 else { return Path() }
+        let centre = CGPoint(x: eye.minX + eye.width * 0.36,
+                             y: eye.minY + max(radius + 1.2, eye.height * 0.30))
+        return Path(ellipseIn: CGRect(x: centre.x - radius, y: centre.y - radius,
+                                      width: radius * 2, height: radius * 2))
     }
 }
 
-/// A brow: blunt and thick at the end nearest the nose, tapering to a point,
-/// with a slight arch over the middle. A uniform capsule reads as a dash.
+/// A brow: a shallow arch, stroked with round caps by the view.
+///
+/// Barely curved. A pronounced arch over a round eye is the cartoon shorthand
+/// for surprise, and with it every expression — neutral included — read as
+/// startled. The brow's job here is height and tilt; the curve only keeps it
+/// from being a dash.
 struct BrowShape: Shape {
-    /// True when the thick end is on the left of this shape's own rect. The
-    /// face mirrors it rather than flipping the view, so the rotation applied
-    /// outside is not inverted along with it.
-    var thickEndLeading: Bool
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.addQuadCurve(to: CGPoint(x: rect.maxX, y: rect.maxY),
+                          control: CGPoint(x: rect.midX, y: rect.minY + rect.height * 0.35))
+        return path
+    }
+}
+
+/// A mouth as one closed outline: the upper lip's curve out, the lower lip's
+/// curve back.
+///
+/// Shut, the two curves coincide and the view's round-joined stroke draws a
+/// plain line with rounded ends. Opening drops only the lower curve, so a smile
+/// that opens stays a smile.
+struct MouthShape: Shape {
+    var curve: Double
+    /// 0 a line … 1 an aperture.
+    var open: Double
+
+    var animatableData: AnimatablePair<Double, Double> {
+        get { AnimatablePair(curve, open) }
+        set { curve = newValue.first; open = newValue.second }
+    }
+
+    /// The corners and the two control points, shared with the tongue.
+    struct Lips {
+        var left: CGPoint
+        var right: CGPoint
+        var upper: CGPoint
+        var lower: CGPoint
+    }
+
+    static func lips(in rect: CGRect, curve: Double, open: Double) -> Lips {
+        // The shut mouth sits in the upper part of the rect; the rest is room
+        // for the lower lip to drop into.
+        let rest = rect.minY + rect.height * 0.30
+        // Y grows downward, so a positive curve pushes the middle below the
+        // corners — which is a smile. Corners move the other way by a little,
+        // so a frown does not just look like a smile flipped on its axis.
+        let depth = rect.height * 0.42 * CGFloat(min(max(curve, -1), 1))
+        let corner = rest - depth * 0.25
+        let aperture = rect.height * 0.62 * CGFloat(min(max(open, 0), 1))
+        return Lips(
+            left: CGPoint(x: rect.minX, y: corner),
+            right: CGPoint(x: rect.maxX, y: corner),
+            upper: CGPoint(x: rect.midX, y: rest + depth),
+            // Quadratic control points sit twice as far from the chord as the
+            // curve they produce, hence the doubled aperture.
+            lower: CGPoint(x: rect.midX, y: rest + depth + aperture * 2))
+    }
 
     func path(in rect: CGRect) -> Path {
-        /// 0 at the thick end, 1 at the tip.
-        func x(_ t: CGFloat) -> CGFloat {
-            thickEndLeading ? rect.minX + rect.width * t : rect.maxX - rect.width * t
-        }
-        let tip = CGPoint(x: x(1), y: rect.midY)
-
+        let lips = Self.lips(in: rect, curve: curve, open: open)
         var path = Path()
-        path.move(to: CGPoint(x: x(0), y: rect.minY + rect.height * 0.25))
-        path.addQuadCurve(to: tip, control: CGPoint(x: x(0.55), y: rect.minY))
-        path.addQuadCurve(to: CGPoint(x: x(0), y: rect.maxY),
-                          control: CGPoint(x: x(0.55), y: rect.maxY - rect.height * 0.1))
+        path.move(to: lips.left)
+        path.addQuadCurve(to: lips.right, control: lips.upper)
+        path.addQuadCurve(to: lips.left, control: lips.lower)
         path.closeSubpath()
         return path
     }
 }
 
-/// A mouth, filled rather than stroked so it can taper.
+/// A tongue sticking out: root under the upper lip, a rounded tip past the
+/// lower one.
 ///
-/// A stroked curve has one width along its whole length, which is the line of a
-/// diagram. Building the outline from two curves lets the corners come to a
-/// point while the middle keeps its weight.
-struct MouthShape: Shape {
+/// `amount` is how far out the mood puts it; `pose` is the fidget on top —
+/// which way the tip has wandered, how far it leans, whether it has been
+/// drawn back in for a moment. Both animate, so a gesture is a smooth motion
+/// of the shape rather than a series of poses.
+struct TongueShape: Shape {
     var curve: Double
-    /// 0 a line … 1 an aperture. Opening drops the lower edge and leaves the
-    /// upper one on the curve, so a smile that opens stays a smile.
+    var open: Double
+    var amount: Double
+    var pose: TonguePose
+
+    var animatableData: AnimatablePair<AnimatablePair<Double, Double>,
+                                       AnimatablePair<Double, AnimatablePair<Double, AnimatablePair<Double, Double>>>> {
+        get {
+            AnimatablePair(AnimatablePair(curve, open),
+                           AnimatablePair(amount, AnimatablePair(pose.side,
+                                                                 AnimatablePair(pose.reach, pose.tilt))))
+        }
+        set {
+            curve = newValue.first.first
+            open = newValue.first.second
+            amount = newValue.second.first
+            pose = TonguePose(side: newValue.second.second.first,
+                              reach: newValue.second.second.second.first,
+                              tilt: newValue.second.second.second.second)
+        }
+    }
+
+    /// Where everything is, shared with the groove so the two cannot part.
+    struct Geometry {
+        var root: CGPoint
+        var tip: CGPoint
+        var halfWidth: CGFloat
+        /// How far past the lower lip the tip reaches.
+        var protrusion: CGFloat
+        /// Leans the whole tongue about its root.
+        var transform: CGAffineTransform
+    }
+
+    func geometry(in rect: CGRect) -> Geometry? {
+        let out = CGFloat(min(max(amount, 0), 1)) * CGFloat(min(max(pose.reach, 0), 1.25))
+        guard out > 0.01 else { return nil }
+        let lips = MouthShape.lips(in: rect, curve: curve, open: open)
+        let chordY = (lips.left.y + lips.right.y) / 2
+        // The middle of each lip: halfway from the chord to its control point.
+        let upper = chordY + (lips.upper.y - chordY) / 2
+        let lower = chordY + (lips.lower.y - chordY) / 2
+
+        let side = CGFloat(min(max(pose.side, -1), 1))
+        // Narrower while drawn in: a tongue pulled back bunches up.
+        let halfWidth = rect.width * 0.21 * (0.8 + 0.2 * min(out, 1))
+        let protrusion = rect.height * 0.46 * out
+        let root = CGPoint(x: rect.midX + side * rect.width * 0.08, y: min(upper, lower) - 1)
+        let tip = CGPoint(x: rect.midX + side * rect.width * 0.24, y: lower + protrusion)
+
+        let angle = CGFloat(min(max(pose.tilt, -1), 1)) * .pi / 13
+        let transform = CGAffineTransform(translationX: root.x, y: root.y)
+            .rotated(by: -angle)
+            .translatedBy(x: -root.x, y: -root.y)
+        return Geometry(root: root, tip: tip, halfWidth: halfWidth,
+                        protrusion: protrusion, transform: transform)
+    }
+
+    func path(in rect: CGRect) -> Path {
+        guard let g = geometry(in: rect) else { return Path() }
+        let w = g.halfWidth
+        // Sides run from the root to where the tip starts rounding; the tip is
+        // two quarter-curves, so it comes to a soft point rather than a
+        // semicircle — a tongue is fuller than it is wide at the end.
+        let shoulder = max(g.root.y, g.tip.y - w * 1.1)
+        var path = Path()
+        path.move(to: CGPoint(x: g.root.x - w, y: g.root.y))
+        path.addLine(to: CGPoint(x: g.tip.x - w, y: shoulder))
+        path.addQuadCurve(to: CGPoint(x: g.tip.x, y: g.tip.y),
+                          control: CGPoint(x: g.tip.x - w, y: g.tip.y))
+        path.addQuadCurve(to: CGPoint(x: g.tip.x + w, y: shoulder),
+                          control: CGPoint(x: g.tip.x + w, y: g.tip.y))
+        path.addLine(to: CGPoint(x: g.root.x + w, y: g.root.y))
+        path.closeSubpath()
+        return path.applying(g.transform)
+    }
+}
+
+/// The groove down the middle of the tongue, from near the tip towards the
+/// root. Fades in only once enough of the tongue is out to hold it — a line on
+/// a sliver of pink is a scratch, not a groove.
+struct TongueGrooveShape: Shape {
+    var tongue: TongueShape
+
+    var animatableData: TongueShape.AnimatableData {
+        get { tongue.animatableData }
+        set { tongue.animatableData = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        guard let g = tongue.geometry(in: rect), g.protrusion > rect.height * 0.14
+        else { return Path() }
+        let start = CGPoint(x: g.tip.x + (g.root.x - g.tip.x) * 0.2,
+                            y: g.tip.y - g.halfWidth * 0.9)
+        let end = CGPoint(x: g.tip.x + (g.root.x - g.tip.x) * 0.7,
+                          y: g.tip.y + (g.root.y - g.tip.y) * 0.7)
+        var path = Path()
+        path.move(to: start)
+        path.addLine(to: end)
+        return path.applying(g.transform)
+    }
+}
+
+/// Everything below the upper lip. What the tongue is clipped to, so its root
+/// can never show above the mouth whatever shape the mouth is in.
+struct BelowUpperLipShape: Shape {
+    var curve: Double
     var open: Double
 
     var animatableData: AnimatablePair<Double, Double> {
@@ -381,37 +441,96 @@ struct MouthShape: Shape {
     }
 
     func path(in rect: CGRect) -> Path {
-        // Y grows downward, so a positive curve pushes the middle below the
-        // corners — which is a smile.
-        let depth = rect.height * CGFloat(curve)
-        let corner = rect.midY - depth * 0.25
-        let weight = rect.height * 0.17
-
+        let lips = MouthShape.lips(in: rect, curve: curve, open: open)
+        let far = rect.height * 3
         var path = Path()
-        let left = CGPoint(x: rect.minX, y: corner)
-        let right = CGPoint(x: rect.maxX, y: corner)
-        path.move(to: left)
-        path.addQuadCurve(to: right, control: CGPoint(x: rect.midX, y: rect.midY + depth - weight))
-        let aperture = rect.height * 1.5 * min(max(open, 0), 1)
-        path.addQuadCurve(
-            to: left, control: CGPoint(x: rect.midX, y: rect.midY + depth + weight + aperture))
+        path.move(to: CGPoint(x: lips.left.x - far, y: lips.left.y))
+        path.addLine(to: lips.left)
+        path.addQuadCurve(to: lips.right, control: lips.upper)
+        path.addLine(to: CGPoint(x: lips.right.x + far, y: lips.right.y))
+        path.addLine(to: CGPoint(x: lips.right.x + far, y: rect.maxY + far))
+        path.addLine(to: CGPoint(x: lips.left.x - far, y: rect.maxY + far))
         path.closeSubpath()
         return path
     }
 }
 
-/// A tongue: flat where it leaves the mouth, rounded at the tip.
-struct TongueShape: Shape {
+/// The upper lip on its own, stroked over the tongue's root.
+struct UpperLipShape: Shape {
+    var curve: Double
+    var open: Double
+
+    var animatableData: AnimatablePair<Double, Double> {
+        get { AnimatablePair(curve, open) }
+        set { curve = newValue.first; open = newValue.second }
+    }
+
     func path(in rect: CGRect) -> Path {
-        let radius = min(rect.width, rect.height * 2) / 2
+        let lips = MouthShape.lips(in: rect, curve: curve, open: open)
         var path = Path()
-        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-        path.addLine(to: CGPoint(x: rect.maxX, y: max(rect.minY, rect.maxY - radius)))
-        path.addQuadCurve(
-            to: CGPoint(x: rect.minX, y: max(rect.minY, rect.maxY - radius)),
-            control: CGPoint(x: rect.midX, y: rect.maxY + radius * 0.5))
-        path.closeSubpath()
+        path.move(to: lips.left)
+        path.addQuadCurve(to: lips.right, control: lips.upper)
         return path
+    }
+}
+
+// MARK: - Colour
+
+/// Colour arithmetic for the face, in OKLCH.
+///
+/// OKLab rather than HSB because it is perceptually even: equal steps look
+/// like equal steps, and lightness stays put while the hue turns, so the
+/// features never dim or flare partway through a transition.
+enum FaceInk {
+    /// Blends `a` towards `b` along the hue wheel, the short way round.
+    static func mix(_ a: NSColor, _ b: NSColor, amount: Double) -> NSColor {
+        let t = min(max(amount, 0), 1)
+        guard t > 0 else { return a }
+        let x = lch(a), y = lch(b)
+        var dh = y.h - x.h
+        if dh > .pi { dh -= 2 * .pi }
+        if dh < -.pi { dh += 2 * .pi }
+        return color(l: x.l + (y.l - x.l) * t,
+                     c: x.c + (y.c - x.c) * t,
+                     h: x.h + dh * t,
+                     alpha: a.alphaComponent)
+    }
+
+    /// The same hue, `amount` of the way to black in perceptual lightness.
+    static func darkened(_ a: NSColor, by amount: Double) -> NSColor {
+        let x = lch(a)
+        return color(l: x.l * (1 - amount), c: x.c * (1 - amount * 0.5), h: x.h,
+                     alpha: a.alphaComponent)
+    }
+
+    private static func lch(_ color: NSColor) -> (l: Double, c: Double, h: Double) {
+        let c = color.usingColorSpace(.sRGB) ?? color
+        func linear(_ v: CGFloat) -> Double {
+            let v = Double(v)
+            return v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4)
+        }
+        let r = linear(c.redComponent), g = linear(c.greenComponent), b = linear(c.blueComponent)
+        let l = cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b)
+        let m = cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b)
+        let s = cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b)
+        let L = 0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s
+        let A = 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s
+        let B = 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s
+        return (L, (A * A + B * B).squareRoot(), atan2(B, A))
+    }
+
+    private static func color(l L: Double, c C: Double, h: Double, alpha: CGFloat) -> NSColor {
+        let A = C * cos(h), B = C * sin(h)
+        let l = pow(L + 0.3963377774 * A + 0.2158037573 * B, 3)
+        let m = pow(L - 0.1055613458 * A - 0.0638541728 * B, 3)
+        let s = pow(L - 0.0894841775 * A - 1.2914855480 * B, 3)
+        func gamma(_ v: Double) -> CGFloat {
+            let v = min(max(v, 0), 1)
+            return CGFloat(v <= 0.0031308 ? 12.92 * v : 1.055 * pow(v, 1 / 2.4) - 0.055)
+        }
+        return NSColor(srgbRed: gamma(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s),
+                       green: gamma(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s),
+                       blue: gamma(-0.0041960863 * l - 0.5115618607 * m + 1.5906614880 * s),
+                       alpha: alpha)
     }
 }

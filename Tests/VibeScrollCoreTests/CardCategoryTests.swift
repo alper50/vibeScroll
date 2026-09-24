@@ -80,4 +80,11 @@ final class CardCategoryTests: XCTestCase {
         XCTAssertEqual(CardCategory.theOffice.label, "The Office")
         XCTAssertEqual(CardCategory.gameOfThrones.label, "Game of Thrones")
     }
+
+    func testAShowWithAMarketTitleFallsBackToItsEnglishName() {
+        // Localized because Turkey knows it as La Casa de Papel; without a
+        // translation loaded — as here — it must still read as a title, never
+        // as its lookup key.
+        XCTAssertEqual(CardCategory.moneyHeist.label, "Money Heist")
+    }
 }

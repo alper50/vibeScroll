@@ -43,9 +43,31 @@ public enum CardLayout {
     public static let faceWindowWidth: Double = 300
     public static var faceWindowHeight: Double { faceSlot + 4 + faceLabelHeight }
 
-    /// Height in card mode. Fixed: a card's text is clamped to two title lines
-    /// and five body lines, so it never needs more.
-    public static let cardHeight: Double = 200
+    /// A card is as tall as its text, between these two.
+    ///
+    /// It used to be a fixed 200pt, sized for the longest text the line limits
+    /// allow. The catalogue never comes close: measured across every card in
+    /// both languages, the natural height runs from about 120pt to 170pt, so
+    /// the fixed panel was on average a quarter empty — a gap under every card
+    /// that read as something failing to load.
+    ///
+    /// The ceiling is the old fixed height, which the line limits (two title
+    /// lines, five body lines) already guarantee is enough. The floor keeps a
+    /// one-line card from shrinking into a strip that no longer reads as the
+    /// same surface as its neighbours.
+    public static let minCardHeight: Double = 120
+    public static let maxCardHeight: Double = 200
+
+    /// Panel height for a card whose content measures `contentHeight`.
+    ///
+    /// Rounded up to a whole point so the last line is never shaved by a
+    /// fraction, and a measurement that failed (zero, or not a number) falls
+    /// back to the ceiling: a card too tall is a gap, a card too short is text
+    /// cut off.
+    public static func cardHeight(fitting contentHeight: Double) -> Double {
+        guard contentHeight.isFinite, contentHeight > 0 else { return maxCardHeight }
+        return min(max(contentHeight.rounded(.up), minCardHeight), maxCardHeight)
+    }
 
     /// A list never grows past this: a pet-sized ambient panel must not become
     /// a full-screen list. There is deliberately no matching floor — see
@@ -101,7 +123,9 @@ public enum CardLayout {
     /// rather than closing the window.
     public enum PanelContent: Equatable, Sendable {
         case none
-        case card
+        /// Carries its measured content height, for the same reason the list
+        /// modes carry their row counts: the panel resizes on this value.
+        case card(contentHeight: Double)
         case moment
         /// `hasQuota` is part of the identity rather than looked up when the
         /// height is computed: the panel resizes on this value, so a pure
@@ -123,7 +147,7 @@ public enum CardLayout {
     public static func panelHeight(for content: PanelContent) -> Double {
         switch content {
         case .none:               return 0
-        case .card:               return cardHeight
+        case .card(let content):  return cardHeight(fitting: content)
         case .moment:             return momentHeight
         case .sessions(let rows, let hasQuota):
             return listHeight(forCount: rows, footer: hasQuota ? quotaFooterHeight : 0)

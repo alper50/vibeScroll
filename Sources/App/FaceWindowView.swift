@@ -4,8 +4,8 @@ import VibeScrollCore
 /// The face as its own small thing on the desktop.
 ///
 /// A circle of the system's own material rather than bare shapes on the
-/// wallpaper: the face is five thin strokes in the accent colour, and on a
-/// wallpaper near that colour it would simply disappear. The material also
+/// wallpaper: the features are drawn in the accent colour, and on a
+/// wallpaper near that colour they would simply disappear. The material also
 /// handles light and dark for free, which a hand-picked translucent fill would
 /// not.
 struct FaceWindowView: View {
@@ -53,8 +53,8 @@ struct FaceWindowView: View {
         // Both stop with the window. A face nobody can see has no reason to
         // keep a timer alive, which is the whole reason either of these is
         // affordable — they sleep for seconds and animate for milliseconds.
-        .onAppear { blink.start(); GazeModel.shared.startIdleMotion() }
-        .onDisappear { blink.stop(); GazeModel.shared.stopIdleMotion() }
+        .onAppear { blink.start(); TongueModel.shared.start(); GazeModel.shared.startIdleMotion() }
+        .onDisappear { blink.stop(); TongueModel.shared.stop(); GazeModel.shared.stopIdleMotion() }
     }
 
     private var blob: some View {
@@ -66,7 +66,7 @@ struct FaceWindowView: View {
             // event, and this body draws the material orb; observing it up
             // here would re-blur that orb all the way across.
             AnimatedFace(blink: blink, reaction: reaction, gaze: GazeModel.shared,
-                         expression: face.expression)
+                         tongue: TongueModel.shared, expression: face.expression)
                 .padding(CardLayout.faceRestingSize * 0.16)
         }
         // Every dimension inside is fixed; only the transform moves.
@@ -259,6 +259,7 @@ private struct AnimatedFace: View {
     @ObservedObject var blink: BlinkModel
     @ObservedObject var reaction: ReactionModel
     @ObservedObject var gaze: GazeModel
+    @ObservedObject var tongue: TongueModel
     var expression: FaceExpression
 
     // A slow breathing scale was tried here and measured at 10.7% of a core —
@@ -268,7 +269,8 @@ private struct AnimatedFace: View {
     // face is still instead, and free.
 
     var body: some View {
-        FaceView(expression: reacted, blink: blink.amount, gaze: gaze.direction)
+        FaceView(expression: reacted, blink: blink.amount, gaze: gaze.direction,
+                 tongue: tongue.pose)
     }
 
     private var reacted: FaceExpression {

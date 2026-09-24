@@ -1,9 +1,9 @@
 # vibeScroll
 
 A macOS menu bar app that watches your AI coding agents and, while they work,
-hands you something short to read: a true, one-glance fact about one of eight
-TV shows — Game of Thrones, Breaking Bad, Stranger Things, The Office, Friends,
-The Sopranos, Sherlock and Squid Game.
+hands you something short to read: a true, one-glance fact about one of fifteen
+TV shows — from Game of Thrones and Breaking Bad to Dark, Chernobyl and How I
+Met Your Mother. `CardCategory` has the full list.
 
 What the agent is doing sets the rhythm — a card waits until an agent has
 settled into one kind of work, and the same kind of work does not trigger
@@ -52,7 +52,7 @@ Two rules the whole design follows:
 | `Sources/VibeScrollCore/` | Pure logic: event decoding, state machine, category resolution, pacing. No AppKit, fully tested. |
 | `Sources/App/` | The macOS app: daemon, menu bar, card panel, settings — plus the `hook` and `run` CLI roles. |
 | `Resources/Localization/` | The interface's string catalogue (English source, Turkish translations). |
-| `Tests/` | 371 tests over the core. |
+| `Tests/` | 372 tests over the core. |
 
 The cards are served by a separate repository,
 [vibeScroll-backend](../vibeScroll-backend). The two are coupled only by an
@@ -107,10 +107,10 @@ vibescroll run -- <your command>
 Three alerts, set independently in Settings → General: one when an agent
 finishes, one when it needs your input, one when you run out of quota. Each can
 be silenced, set to any of the 14 sounds macOS ships, set to a sound bundled
-with the app, or pointed at a file of your own. The defaults are distinct on
-purpose — Fart 1, Ping and Basso — so the three are tellable apart without
-looking. Quota keeps Basso, macOS's error sound: it is the only one of the three
-that means something went wrong.
+with the app, or pointed at a file of your own. The defaults are all bundled and
+distinct on purpose — Fart 1 when an agent finishes, Fart 3 when it needs input,
+Fart 4 when quota runs out — so the three are tellable apart without looking.
+They apply only until a sound is picked; a stored choice always wins.
 
 vibeScroll plays these itself rather than attaching them to the notification.
 That means they are heard even with notifications turned off, and the app owns
@@ -240,9 +240,9 @@ information: vibeScroll is up and no agent is. Settings turns that off, in
 which case the face arrives with the first session and leaves with the last.
 
 It is drawn on a circle of the system's own material rather than bare on the
-wallpaper. The face is five thin strokes in the accent colour; on a wallpaper
-near that colour it would simply disappear, and the material handles light and
-dark for free.
+wallpaper. The features are drawn in the accent colour; on a wallpaper near that
+colour they would simply disappear, and the material handles light and dark for
+free.
 
 It exists because the card pool is finite and the signals worth showing are not.
 Four things drive it, and none of them is visible anywhere else:
@@ -269,8 +269,27 @@ measured would be a lie.
 
 Everything is drawn with SwiftUI shapes — no sprite, no asset, no licence. That
 is deliberate: AgentPet's pet gallery was left behind partly over exactly that
-question. Blinking is skipped entirely under Reduce Motion rather than slowed,
+question.
+
+The drawing follows small-icon rules rather than chasing realism, because the
+face is about 50pt on screen and an eye is a few points across. No feature ends
+in a point — every line has round caps and joins — lines never go below about
+1.7pt, and there is one layer of ink with no outline or engraving. An earlier
+version tapered brows and mouth to tips and gave the eyes almond corners; at
+this size every one of those details fell below a pixel and came out as
+jaggies. Strain warms the colour by turning its hue in OKLCH, blue through
+magenta to orange, because a straight RGB mix of two near-complements passes
+through grey. Blinking is skipped entirely under Reduce Motion rather than slowed,
 the same call `TypewriterReveal` makes about its reveal.
+
+The tongue — out when the agents are burning tokens fast — is not held still
+either. How far out it is belongs to the mood; where the tip is belongs to
+`TongueMotion`, which every few seconds picks a short gesture: creep to a
+corner of the mouth and stay, work the tip side to side, or draw it in and push
+it back out. Each is under a second and then it holds, because any animation
+over the face re-blurs the orb behind it for as long as it runs — the blink's
+trade, made again. It comes out over the lower lip from under the upper one,
+rather than sitting inside the mouth as a pink patch.
 
 `vibescroll face` opens a window for tuning it: sliders for the five numbers,
 and ten scenarios that run real input through the real pipeline, so what appears
@@ -341,7 +360,8 @@ for the two to disagree.
   English.
 
 A few things are deliberately left alone: show titles (proper nouns, shipped
-under the same name in both languages), agent and brand names, the
+under the same name in both languages — except Money Heist, which Turkey knows
+as La Casa de Papel), agent and brand names, the
 `vibescroll face` developer window, CLI usage text, task logs, and the
 instructions appended to queued prompts — those are read by a model, not a
 person.
@@ -378,6 +398,12 @@ Cards you browse to count as seen, so they will not resurface on their own.
 Card text is revealed character by character, locally — there is no streaming
 involved, just a timed reveal. Click the card to skip to the end, and the effect
 is disabled entirely when the system asks for reduced motion.
+
+The panel is as tall as the card's text, between 120pt and 200pt. It is sized
+once, when the card arrives, by laying the card's own view out off screen with
+the finished text (`CardMeasure`) — so it never grows while the text is still
+writing, and the measurement cannot drift from what is drawn. A fixed 200pt
+used to leave the average card about a quarter empty.
 
 The **list** button in the card header (and *Show all sessions* in the menu bar)
 switches the same panel to every live session: a status dot, the agent, the

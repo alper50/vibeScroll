@@ -448,7 +448,7 @@ final class CardController: ObservableObject {
         // The moment wins while it is up. It is the only content here with an
         // expiry, so the card it covers is still there when it goes.
         case .card:     return moment != nil ? .moment
-                            : (current == nil ? .none : .card)
+                            : (current == nil ? .none : .card(contentHeight: cardContentHeight))
         }
     }
 
@@ -504,7 +504,15 @@ final class CardController: ObservableObject {
         }
     }
 
+    /// The visible card's measured height, taken once when it arrives.
+    ///
+    /// With the finished text rather than whatever the typewriter has shown so
+    /// far, so the panel is the right size before the first letter and never
+    /// grows while the card writes itself out.
+    private var cardContentHeight: Double = CardLayout.maxCardHeight
+
     private func present(_ card: InfoCard, context: [AgentSession]) {
+        cardContentHeight = CardMeasure.contentHeight(of: card, context: context)
         current = card
         self.context = context
         mode = .card

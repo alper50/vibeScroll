@@ -27,16 +27,15 @@ final class SoundSettings: ObservableObject {
             }
         }
 
-        /// Distinct defaults so the three are tellable apart without looking.
-        /// Quota gets Basso, macOS's error sound — it is the only one of the
-        /// three that means something went wrong, and the only one worth
-        /// interrupting for. Finishing is the cheerful one, so it gets the
-        /// bundled sound; needing input sits between them and stays a chime.
+        /// Distinct defaults so the three are tellable apart without looking:
+        /// all bundled, but three different cuts of the recording rather than
+        /// one sound for everything. Applies only until the user picks
+        /// something — a stored choice always wins.
         var fallback: SoundSelection {
             switch self {
             case .done: return .bundled("Fart 1")
-            case .waiting: return .system("Ping")
-            case .quota: return .system("Basso")
+            case .waiting: return .bundled("Fart 3")
+            case .quota: return .bundled("Fart 4")
             }
         }
 

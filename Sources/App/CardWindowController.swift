@@ -16,7 +16,7 @@ final class CardWindowController: NSObject {
     let presentation = FacePresentation()
 
     private var panel: NSPanel?
-    private static let size = NSSize(width: CardLayout.width, height: CardLayout.cardHeight)
+    private static let size = NSSize(width: CardLayout.width, height: CardLayout.maxCardHeight)
 
     /// Matches the face's. The card hangs off it, so one arriving abruptly
     /// while the other eases in reads as a glitch rather than two windows.

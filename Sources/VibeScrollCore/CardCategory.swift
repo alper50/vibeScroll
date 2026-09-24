@@ -20,9 +20,19 @@ public enum CardCategory: String, Codable, Sendable, CaseIterable {
     case theSopranos
     case sherlock
     case squidGame
+    case moneyHeist
+    case peakyBlinders
+    case dark
+    case chernobyl
+    case blackMirror
+    case prisonBreak
+    case howIMetYourMother
 
-    /// Display name. Show titles are proper nouns and ship under the same name
-    /// in every language this app supports, so they are not localized.
+    /// Display name. Show titles are proper nouns and most ship under the same
+    /// name in every language this app supports, so they are not localized.
+    /// The exception is a show released under different titles in different
+    /// markets: in Turkey Money Heist is known by its original Spanish title,
+    /// and a picker row nobody recognises is worse than an inconsistent rule.
     public var label: String {
         switch self {
         case .gameOfThrones:  return "Game of Thrones"
@@ -33,6 +43,14 @@ public enum CardCategory: String, Codable, Sendable, CaseIterable {
         case .theSopranos:    return "The Sopranos"
         case .sherlock:       return "Sherlock"
         case .squidGame:      return "Squid Game"
+        case .moneyHeist:
+            return String(localized: "show.moneyHeist", defaultValue: "Money Heist")
+        case .peakyBlinders:  return "Peaky Blinders"
+        case .dark:           return "Dark"
+        case .chernobyl:      return "Chernobyl"
+        case .blackMirror:    return "Black Mirror"
+        case .prisonBreak:    return "Prison Break"
+        case .howIMetYourMother: return "How I Met Your Mother"
         }
     }
 }

@@ -148,9 +148,10 @@ final class MomentTests: XCTestCase {
     // MARK: - Layout
 
     func testAMomentIsShorterThanATeachingCard() {
-        // Two lines in a 200pt panel is mostly empty panel.
+        // Two lines in a card-sized panel is mostly empty panel — shorter than
+        // even the shortest card, so a remark never looks like an announcement.
         XCTAssertLessThan(CardLayout.panelHeight(for: .moment),
-                          CardLayout.panelHeight(for: .card))
+                          CardLayout.panelHeight(for: .card(contentHeight: 0.1)))
         XCTAssertGreaterThan(CardLayout.panelHeight(for: .moment), 0)
     }
 }

@@ -9,7 +9,7 @@ final class CardLayoutTests: XCTestCase {
         // what is in it.
         XCTAssertEqual(CardLayout.listHeight(forCount: 1),
                        CardLayout.chrome + CardLayout.rowHeight, accuracy: 0.001)
-        XCTAssertLessThan(CardLayout.listHeight(forCount: 1), CardLayout.cardHeight)
+        XCTAssertLessThan(CardLayout.listHeight(forCount: 1), CardLayout.maxCardHeight)
     }
 
     func testAnEmptyListIsSizedLikeAListOfOne() {
@@ -68,13 +68,43 @@ final class CardLayoutTests: XCTestCase {
                        CardLayout.listHeight(forCount: 1))
     }
 
+    // MARK: - Card height
+
+    func testACardIsAsTallAsItsText() {
+        XCTAssertEqual(CardLayout.cardHeight(fitting: 143), 143)
+        XCTAssertEqual(CardLayout.panelHeight(for: .card(contentHeight: 168)), 168)
+    }
+
+    func testAFractionalMeasurementRoundsUpNotDown() {
+        // Down would shave the bottom of the last line.
+        XCTAssertEqual(CardLayout.cardHeight(fitting: 136.2), 137)
+    }
+
+    func testAShortCardStopsAtTheFloor() {
+        XCTAssertEqual(CardLayout.cardHeight(fitting: 60), CardLayout.minCardHeight)
+    }
+
+    func testATallCardStopsAtTheCeiling() {
+        // The line limits make this unreachable today; the clamp is what keeps
+        // a future layout change from growing the panel without bound.
+        XCTAssertEqual(CardLayout.cardHeight(fitting: 900), CardLayout.maxCardHeight)
+    }
+
+    func testAFailedMeasurementFallsBackToTheCeiling() {
+        // Too tall is a gap; too short is text cut off.
+        for bad in [0, -10, .nan, .infinity] as [Double] {
+            XCTAssertEqual(CardLayout.cardHeight(fitting: bad), CardLayout.maxCardHeight,
+                           "\(bad)")
+        }
+    }
+
     // MARK: - Panel composition
 
     func testAnEmptyPanelHasNoHeight() {
         // The face is its own window now, so a dismissed card leaves nothing
         // for this one to show.
         XCTAssertEqual(CardLayout.panelHeight(for: .none), 0)
-        XCTAssertEqual(CardLayout.panelHeight(for: .card), CardLayout.cardHeight)
+        XCTAssertEqual(CardLayout.panelHeight(for: .card(contentHeight: 150)), 150)
         XCTAssertEqual(CardLayout.panelHeight(for: .sessions(count: 3, hasQuota: false)),
                        CardLayout.listHeight(forCount: 3))
     }
@@ -96,7 +126,7 @@ final class CardLayoutTests: XCTestCase {
     // MARK: - Attaching the card to the face
 
     private let screen = CGRect(x: 0, y: 0, width: 1440, height: 900)
-    private var cardSize: CGSize { CGSize(width: CardLayout.width, height: CardLayout.cardHeight) }
+    private var cardSize: CGSize { CGSize(width: CardLayout.width, height: CardLayout.maxCardHeight) }
 
     func testTheCardGrowsOutOfTheTopOfTheFace() {
         // Upward is the direction that reads as emerging, and it is also where
@@ -112,7 +142,7 @@ final class CardLayoutTests: XCTestCase {
         let face = CGRect(x: 700, y: 700, width: 124, height: 150)
         let origin = CardLayout.attachedOrigin(
             faceFrame: face, cardSize: cardSize, visibleFrame: screen)
-        XCTAssertEqual(origin.y, face.minY - 10 - CardLayout.cardHeight)
+        XCTAssertEqual(origin.y, face.minY - 10 - CardLayout.maxCardHeight)
     }
 
     func testTheCardIsNeverPushedOffScreen() {
@@ -127,7 +157,7 @@ final class CardLayoutTests: XCTestCase {
         let tall = CGRect(x: 700, y: 880, width: 124, height: 150)
         let origin = CardLayout.attachedOrigin(
             faceFrame: tall, cardSize: cardSize, visibleFrame: screen)
-        XCTAssertLessThanOrEqual(origin.y + CardLayout.cardHeight, screen.maxY)
+        XCTAssertLessThanOrEqual(origin.y + CardLayout.maxCardHeight, screen.maxY)
     }
 
     // MARK: - The topic picker
@@ -142,15 +172,18 @@ final class CardLayoutTests: XCTestCase {
         }
     }
 
-    func testTheFullPickerFitsWithoutScrolling() {
-        // One row per show. Well under the cap, so the whole catalogue is on
-        // screen at once — the cap exists for a long session list, not for this.
-        let rows = Double(CardCategory.allCases.count)
-        let full = CardLayout.panelHeight(for: .categories(count: CardCategory.allCases.count))
-        XCTAssertLessThan(full, CardLayout.maxListHeight)
-        XCTAssertLessThanOrEqual(
-            CardLayout.chrome + rows * CardLayout.rowHeight, CardLayout.maxListHeight,
-            "the picker would scroll — a show was added that the cap does not leave room for")
+    func testTheFullPickerReachesTheCapAndScrolls() {
+        // One row per show, and there are more shows than a 420pt panel
+        // holds, so the last of them are behind a scroll. That is the cap doing
+        // its job rather than a regression — the alternative is an ambient
+        // panel half the screen tall.
+        let count = CardCategory.allCases.count
+        XCTAssertEqual(CardLayout.panelHeight(for: .categories(count: count)),
+                       CardLayout.maxListHeight)
+        XCTAssertGreaterThan(
+            CardLayout.chrome + Double(count) * CardLayout.rowHeight,
+            CardLayout.maxListHeight,
+            "the picker would fit — this test is describing a cap that no longer binds")
     }
 
     func testThePickerIsSizedToItsRowsLikeAnyOtherList() {
@@ -160,7 +193,7 @@ final class CardLayoutTests: XCTestCase {
         XCTAssertEqual(CardLayout.panelHeight(for: .categories(count: 5)),
                        CardLayout.chrome + 5 * CardLayout.rowHeight, accuracy: 0.001)
         XCTAssertLessThan(CardLayout.panelHeight(for: .categories(count: 5)),
-                          CardLayout.cardHeight)
+                          CardLayout.maxCardHeight)
     }
 
     // MARK: - Which windows are up
@@ -178,7 +211,7 @@ final class CardLayoutTests: XCTestCase {
         // frame, so one without the other falls back to the screen corner and
         // sits there orphaned — having visibly jumped to get there.
         let contents: [CardLayout.PanelContent] = [
-            .none, .card, .moment,
+            .none, .card(contentHeight: 140), .moment,
             .sessions(count: 0, hasQuota: false), .sessions(count: 4, hasQuota: true),
             .categories(count: 17),
         ]
@@ -211,7 +244,7 @@ final class CardLayoutTests: XCTestCase {
     func testAnIdleFaceThatStaysKeepsWhateverIsUnderIt() {
         // With the setting on, the face is still information — and a card that
         // is still saying something goes on hanging off it.
-        let v = visibility(.card, card: true, faceWhenIdle: true)
+        let v = visibility(.card(contentHeight: 140), card: true, faceWhenIdle: true)
         XCTAssertTrue(v.face)
         XCTAssertTrue(v.card)
     }
@@ -219,7 +252,7 @@ final class CardLayoutTests: XCTestCase {
     func testACardAloneIsEnoughToKeepTheFaceOut() {
         // No agents and no idle face, but something on screen worth reading:
         // the face has to be there for the card to hang off.
-        let v = visibility(.card, sessions: false, card: true, faceWhenIdle: false)
+        let v = visibility(.card(contentHeight: 140), sessions: false, card: true, faceWhenIdle: false)
         XCTAssertTrue(v.face)
         XCTAssertTrue(v.card)
     }

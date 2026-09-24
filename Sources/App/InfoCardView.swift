@@ -84,108 +84,22 @@ struct InfoCardView: View {
 
     // MARK: - Card mode
 
-    @ViewBuilder
+    /// The live card: `CardBodyView` fed the typewriter's current text.
+    ///
+    /// The view itself lives on its own so the panel can be sized by laying the
+    /// very same view out with the *finished* text — see `CardMeasure`. The
+    /// size is decided once, before the first letter lands, so the panel never
+    /// grows while the card is still writing.
     private func cardBody(_ card: InfoCard) -> some View {
         let reveal = TypewriterReveal(title: card.title, body: card.body)
-        let shown = reveal.text(after: typewriter.elapsed)
-
-        VStack(alignment: .leading, spacing: 8) {
-            cardHeader(card)
-
-            Text(shown.title + caret(on: .title, shown))
-                .font(.system(size: 14, weight: .semibold))
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Text(shown.body + caret(on: .body, shown))
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-                .lineLimit(5)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Spacer(minLength: 0)
-
-            cardFooter(card, isComplete: shown.isComplete)
-        }
-        .padding(14)
-        // Clicking the card completes the reveal: some people read faster than
-        // it writes, and waiting on decoration is worse than no decoration.
-        .contentShape(Rectangle())
-        .onTapGesture { typewriter.finish() }
-        .onAppear { typewriter.run(duration: reveal.duration) }
-    }
-
-    private func cardHeader(_ card: InfoCard) -> some View {
-        HStack(spacing: 6) {
-            // The badge was a label for as long as there was nothing else to
-            // look at. It is the one piece of chrome already naming a topic, so
-            // it is the obvious place to ask for a different one.
-            Button { controller.showCategories() } label: {
-                HStack(spacing: 3) {
-                    Text(verbatim: card.category.label.uppercased())
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 7, weight: .bold))
-                        .opacity(0.7)
-                }
-                .font(.system(size: 9, weight: .bold))
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(Capsule().fill(Color.accentColor.opacity(0.16)))
-                .foregroundStyle(Color.accentColor)
-                .contentShape(Capsule())
-            }
-            .buttonStyle(.plain)
-            .help("Browse another show")
-
-            Spacer()
-
-            iconButton("xmark", help: "Dismiss card") { controller.dismissCard() }
-        }
-    }
-
-    @ViewBuilder
-    private func cardFooter(_ card: InfoCard, isComplete: Bool) -> some View {
-        HStack(spacing: 6) {
-            if let session = controller.context.first {
-                Text(contextLine(for: session))
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            } else if let source = card.source {
-                Text(source)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-            }
-
-            Spacer(minLength: 4)
-
-            if let link = card.link {
-                Link(destination: link) {
-                    Text("Read more").font(.system(size: 10, weight: .medium))
-                }
-            }
-
-            // Hidden until the card has finished writing — offering "next"
-            // mid-sentence invites skipping past text that hasn't arrived.
-            // Held in the layout rather than removed from it, so the footer
-            // doesn't jump at the moment the reveal completes.
-            Button {
-                controller.showNext()
-            } label: {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color.accentColor)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 4)
-                    .background(Capsule().fill(Color.accentColor.opacity(0.14)))
-            }
-            .buttonStyle(.plain)
-            .help("Next card")
-            .opacity(isComplete ? 1 : 0)
-            .disabled(!isComplete)
-        }
+        return CardBodyView(card: card, shown: reveal.text(after: typewriter.elapsed),
+                            context: controller.context)
+            // Clicking the card completes the reveal: some people read faster
+            // than it writes, and waiting on decoration is worse than no
+            // decoration.
+            .contentShape(Rectangle())
+            .onTapGesture { typewriter.finish() }
+            .onAppear { typewriter.run(duration: reveal.duration) }
     }
 
     // MARK: - Sessions mode
@@ -437,26 +351,126 @@ struct InfoCardView: View {
         case .idle:       return .gray.opacity(0.5)
         }
     }
+}
 
-    // MARK: - Shared
+// MARK: - Card body
 
-    private func iconButton(
-        _ symbol: String, help: LocalizedStringKey, action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(.tertiary)
+/// A card, laid out: header, title, body, footer.
+///
+/// Plain inputs and no state of its own, so it can be drawn twice — once on
+/// screen with the typewriter's partial text, and once off screen with the
+/// finished text, to find out how tall the panel has to be. One layout, used
+/// for both, is what keeps the measurement honest: a second copy of these
+/// fonts and paddings would drift the first time either was touched.
+struct CardBodyView: View {
+    let card: InfoCard
+    let shown: TypewriterReveal.Revealed
+    let context: [AgentSession]
+
+    private var controller: CardController { CardController.shared }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            header
+
+            Text(shown.title + caret(on: .title))
+                .font(.system(size: 14, weight: .semibold))
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text(shown.body + caret(on: .body))
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .lineLimit(5)
+                .fixedSize(horizontal: false, vertical: true)
+
+            // Zero at its minimum, so a measurement sees the text and nothing
+            // else; on screen the panel already fits, and this only absorbs
+            // rounding.
+            Spacer(minLength: 0)
+
+            footer
         }
-        .buttonStyle(.plain)
-        .help(help)
+        .padding(14)
+    }
+
+    private var header: some View {
+        HStack(spacing: 6) {
+            // The badge was a label for as long as there was nothing else to
+            // look at. It is the one piece of chrome already naming a topic, so
+            // it is the obvious place to ask for a different one.
+            Button { controller.showCategories() } label: {
+                HStack(spacing: 3) {
+                    Text(verbatim: card.category.label.uppercased())
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 7, weight: .bold))
+                        .opacity(0.7)
+                }
+                .font(.system(size: 9, weight: .bold))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(Color.accentColor.opacity(0.16)))
+                .foregroundStyle(Color.accentColor)
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .help("Browse another show")
+
+            Spacer()
+
+            iconButton("xmark", help: "Dismiss card") { controller.dismissCard() }
+        }
+    }
+
+    private var footer: some View {
+        HStack(spacing: 6) {
+            if let session = context.first {
+                Text(contextLine(for: session))
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            } else if let source = card.source {
+                Text(source)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 4)
+
+            if let link = card.link {
+                Link(destination: link) {
+                    Text("Read more").font(.system(size: 10, weight: .medium))
+                }
+            }
+
+            // Hidden until the card has finished writing — offering "next"
+            // mid-sentence invites skipping past text that hasn't arrived.
+            // Held in the layout rather than removed from it, so the footer
+            // doesn't jump at the moment the reveal completes.
+            Button {
+                controller.showNext()
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(Color.accentColor.opacity(0.14)))
+            }
+            .buttonStyle(.plain)
+            .help("Next card")
+            .opacity(shown.isComplete ? 1 : 0)
+            .disabled(!shown.isComplete)
+        }
     }
 
     private enum Field { case title, body }
 
     /// The caret follows the write head: it sits on the title until the first
     /// body character lands, then moves down with the text.
-    private func caret(on field: Field, _ shown: TypewriterReveal.Revealed) -> String {
+    private func caret(on field: Field) -> String {
         guard !shown.isComplete else { return "" }
         let caret = "\u{258D}"
         switch field {
@@ -473,4 +487,40 @@ struct InfoCardView: View {
         if let message = session.message, !message.isEmpty { parts.append(message) }
         return parts.joined(separator: " \u{00B7} ")
     }
+}
+
+// MARK: - Measuring
+
+/// How tall a card's content is, found by laying `CardBodyView` out off
+/// screen with the finished text.
+///
+/// Measured rather than estimated from character counts: the same 160
+/// characters wrap to three lines or four depending on the words, the font and
+/// the language, and a panel sized from a guess is either clipped or half
+/// empty. A hosting view per card is cheap next to what it replaces — this runs
+/// once when a card arrives, not per frame.
+@MainActor
+enum CardMeasure {
+    static func contentHeight(of card: InfoCard, context: [AgentSession]) -> Double {
+        let finished = TypewriterReveal.Revealed(title: card.title, body: card.body,
+                                                 isComplete: true)
+        let host = NSHostingView(rootView:
+            CardBodyView(card: card, shown: finished, context: context)
+                .frame(width: CardLayout.width))
+        return Double(host.fittingSize.height)
+    }
+}
+
+// MARK: - Shared
+
+func iconButton(
+    _ symbol: String, help: LocalizedStringKey, action: @escaping () -> Void
+) -> some View {
+    Button(action: action) {
+        Image(systemName: symbol)
+            .font(.system(size: 9, weight: .bold))
+            .foregroundStyle(.tertiary)
+    }
+    .buttonStyle(.plain)
+    .help(help)
 }
