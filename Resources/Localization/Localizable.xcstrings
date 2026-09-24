@@ -2345,7 +2345,6 @@
       }
     },
     "show.moneyHeist": {
-      "extractionState": "extracted_with_value",
       "localizations": {
         "en": {
           "stringUnit": {
@@ -2357,6 +2356,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "La Casa de Papel"
+          }
+        }
+      }
+    },
+    "show.muhtesemYuzyil": {
+      "extractionState": "extracted_with_value",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Magnificent Century"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Muhteşem Yüzyıl"
           }
         }
       }

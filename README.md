@@ -1,9 +1,9 @@
 # vibeScroll
 
 A macOS menu bar app that watches your AI coding agents and, while they work,
-hands you something short to read: a true, one-glance fact about one of fifteen
-TV shows — from Game of Thrones and Breaking Bad to Dark, Chernobyl and How I
-Met Your Mother. `CardCategory` has the full list.
+hands you something short to read: a true, one-glance fact about one of twenty
+TV shows — from Game of Thrones and Breaking Bad to Dark, Medcezir and Behzat Ç.
+`CardCategory` has the full list.
 
 What the agent is doing sets the rhythm — a card waits until an agent has
 settled into one kind of work, and the same kind of work does not trigger
@@ -52,7 +52,7 @@ Two rules the whole design follows:
 | `Sources/VibeScrollCore/` | Pure logic: event decoding, state machine, category resolution, pacing. No AppKit, fully tested. |
 | `Sources/App/` | The macOS app: daemon, menu bar, card panel, settings — plus the `hook` and `run` CLI roles. |
 | `Resources/Localization/` | The interface's string catalogue (English source, Turkish translations). |
-| `Tests/` | 372 tests over the core. |
+| `Tests/` | 389 tests over the core. |
 
 The cards are served by a separate repository,
 [vibeScroll-backend](../vibeScroll-backend). The two are coupled only by an
@@ -361,7 +361,7 @@ for the two to disagree.
 
 A few things are deliberately left alone: show titles (proper nouns, shipped
 under the same name in both languages — except Money Heist, which Turkey knows
-as La Casa de Papel), agent and brand names, the
+as La Casa de Papel, and Muhteşem Yüzyıl, which abroad is Magnificent Century), agent and brand names, the
 `vibescroll face` developer window, CLI usage text, task logs, and the
 instructions appended to queued prompts — those are read by a model, not a
 person.

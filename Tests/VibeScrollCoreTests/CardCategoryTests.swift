@@ -86,5 +86,13 @@ final class CardCategoryTests: XCTestCase {
         // translation loaded — as here — it must still read as a title, never
         // as its lookup key.
         XCTAssertEqual(CardCategory.moneyHeist.label, "Money Heist")
+        XCTAssertEqual(CardCategory.muhtesemYuzyil.label, "Magnificent Century")
+    }
+
+    func testTurkishTitlesKeepTheirLetters() {
+        // Shown verbatim, so the Turkish characters are the label itself —
+        // nothing on the way may fold them to ASCII.
+        XCTAssertEqual(CardCategory.behzatC.label, "Behzat Ç.")
+        XCTAssertEqual(CardCategory.leylaIleMecnun.label, "Leyla ile Mecnun")
     }
 }

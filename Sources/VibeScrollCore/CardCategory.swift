@@ -27,12 +27,19 @@ public enum CardCategory: String, Codable, Sendable, CaseIterable {
     case blackMirror
     case prisonBreak
     case howIMetYourMother
+    // Turkish series.
+    case medcezir
+    case ezel
+    case behzatC
+    case leylaIleMecnun
+    case muhtesemYuzyil
 
     /// Display name. Show titles are proper nouns and most ship under the same
     /// name in every language this app supports, so they are not localized.
     /// The exception is a show released under different titles in different
     /// markets: in Turkey Money Heist is known by its original Spanish title,
-    /// and a picker row nobody recognises is worse than an inconsistent rule.
+    /// and abroad Muhteşem Yüzyıl is Magnificent Century. A picker row nobody
+    /// recognises is worse than an inconsistent rule.
     public var label: String {
         switch self {
         case .gameOfThrones:  return "Game of Thrones"
@@ -51,6 +58,12 @@ public enum CardCategory: String, Codable, Sendable, CaseIterable {
         case .blackMirror:    return "Black Mirror"
         case .prisonBreak:    return "Prison Break"
         case .howIMetYourMother: return "How I Met Your Mother"
+        case .medcezir:       return "Medcezir"
+        case .ezel:           return "Ezel"
+        case .behzatC:        return "Behzat Ç."
+        case .leylaIleMecnun: return "Leyla ile Mecnun"
+        case .muhtesemYuzyil:
+            return String(localized: "show.muhtesemYuzyil", defaultValue: "Magnificent Century")
         }
     }
 }
