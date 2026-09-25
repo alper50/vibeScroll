@@ -13,10 +13,12 @@ import VibeScrollCore
 ///   the exact pane.
 /// - **VS Code, Cursor, Windsurf** — no scripting dictionary and no API for
 ///   selecting a terminal tab, so tab-level focus is impossible. Their URL
-///   scheme does reuse the window already holding a folder, so opening the
-///   session's project lands on the right *window*. This is the path that
+///   scheme does focus the window already holding a folder, so opening the
+///   session's *workspace* lands on the right window. This is the path that
 ///   matters for an agent running as an IDE extension, where there is no
-///   `TERM_PROGRAM` and no tty at all.
+///   `TERM_PROGRAM` and no tty at all. See `EditorLink` for why the link asks
+///   for a new window: without that, a folder nobody has open was loaded into
+///   the last active window, reloading it and closing the session inside.
 /// - **Anything else** — activate the app and stop there.
 enum SessionFocus {
 
@@ -85,7 +87,10 @@ enum SessionFocus {
             ?? session.terminalProgram.flatMap { bundleIDsByTermProgram[$0] }
         guard let bundleID else { return nil }
 
-        if let url = EditorLink.url(bundleID: bundleID, projectPath: session.project) {
+        // The workspace, not the current `cwd`: after a `cd` into a subfolder
+        // the cwd names a folder no window has open.
+        if let url = EditorLink.url(bundleID: bundleID,
+                                    projectPath: session.workspace ?? session.project) {
             return .url(url)
         }
         return .activate(bundleID: bundleID)

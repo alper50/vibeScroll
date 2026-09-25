@@ -30,7 +30,17 @@ public enum EditorLink {
         schemesByBundleID[bundleID]
     }
 
-    /// `<scheme>://file<absolute path>`, percent-encoded.
+    /// `<scheme>://file<absolute path>?windowId=_blank`, percent-encoded.
+    ///
+    /// **`windowId=_blank` is what makes a click safe.** Handed a folder that
+    /// no window has open, VS Code (and every fork built on it) does not open
+    /// a new window by default: it reuses the last active one and loads the
+    /// folder into it — reloading that window and killing whatever agent
+    /// session was running there. A click meant to *find* a session could
+    /// close a different one. With `_blank` a folder nobody has open gets a
+    /// window of its own; one that is already open is still just focused,
+    /// because VS Code checks for an existing window before it looks at the
+    /// flag at all.
     ///
     /// Returns `nil` for a relative path: the scheme requires an absolute one,
     /// and a relative path would resolve against whatever directory the editor
@@ -41,7 +51,7 @@ public enum EditorLink {
         guard normalized.hasPrefix("/") else { return nil }
         guard let encoded = normalized.addingPercentEncoding(
             withAllowedCharacters: .urlPathAllowed) else { return nil }
-        return URL(string: "\(scheme)://file\(encoded)")
+        return URL(string: "\(scheme)://file\(encoded)?windowId=_blank")
     }
 
     /// Convenience: the link for a session's host, or `nil` when the host is

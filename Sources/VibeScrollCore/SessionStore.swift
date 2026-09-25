@@ -98,6 +98,13 @@ public final class SessionStore {
             return nil
         }
 
+        // Recovered from the transcript's location when the agent reports one
+        // (Claude Code does); that beats any `cwd` seen, which may already be
+        // a subfolder if the app started mid-session.
+        let root = event.project.flatMap { cwd in
+            event.transcriptPath.flatMap { ProjectPath.sessionRoot(cwd: cwd, transcriptPath: $0) }
+        }
+
         // A tool event with no usable signal keeps the previous topic rather
         // than resetting to `.generic` — see CategoryResolver.category.
         let resolvedTopic = CategoryResolver.category(
@@ -116,6 +123,9 @@ public final class SessionStore {
             existing.state = state
             existing.updatedAt = now
             if let project = event.project { existing.project = project }
+            // Sticky: the first folder seen, unless the transcript says better.
+            if let root { existing.workspace = root }
+            else if existing.workspace == nil { existing.workspace = event.project }
             if let model = event.model { existing.model = model }
             if let program = event.terminalProgram { existing.terminalProgram = program }
             if let tty = event.terminalTTY { existing.terminalTTY = tty }
@@ -136,6 +146,7 @@ public final class SessionStore {
             id: event.sessionId,
             agentKind: event.agentKind,
             project: event.project,
+            workspace: root ?? event.project,
             state: state,
             message: event.message,
             model: event.model,

@@ -421,6 +421,15 @@ something:
 | VS Code, Cursor, Windsurf | The **window** holding that project — these expose no API for selecting a terminal tab |
 | Anything else | The app is brought to the front |
 
+For the editors, the click opens the session's *workspace* — the folder it
+started in, recovered from where Claude Code files the transcript — rather than
+the agent's current directory, which wanders the moment it `cd`s into a
+subfolder. The link also carries `windowId=_blank`. Without it, an editor
+handed a folder no window has open loads it into the last active window,
+reloading that window and closing whatever agent session was running there; a
+click meant to find one session could end another. With it, an open folder is
+still simply focused, and anything else gets a window of its own.
+
 Token counts come from the agent's own transcript and are read incrementally
 from a stored byte offset, so repeated scans never double-count. Only Claude
 Code and Codex write a transcript we can read; the other ten agents show no

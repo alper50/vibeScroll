@@ -4,7 +4,14 @@ import Foundation
 public struct AgentSession: Identifiable, Sendable, Equatable {
     public let id: String
     public var agentKind: AgentKind
+    /// Where the agent is working right now — the hook's `cwd`, updated on
+    /// every event. For display.
     public var project: String?
+    /// The folder the session belongs to, which does not drift when `project`
+    /// does. What a click uses to find the session's window: an editor window
+    /// is open on the folder the session started in, not on whichever
+    /// subfolder the agent last `cd`'d into. `nil` until something is known.
+    public var workspace: String?
     /// Human-readable conversation title (e.g. Claude Code's summary, or first
     /// user message). Populated lazily from the transcript when available.
     public var title: String?
@@ -55,6 +62,7 @@ public struct AgentSession: Identifiable, Sendable, Equatable {
         id: String,
         agentKind: AgentKind,
         project: String? = nil,
+        workspace: String? = nil,
         title: String? = nil,
         state: AgentState,
         message: String? = nil,
@@ -77,6 +85,7 @@ public struct AgentSession: Identifiable, Sendable, Equatable {
         self.id = id
         self.agentKind = agentKind
         self.project = project
+        self.workspace = workspace
         self.title = title
         self.state = state
         self.message = message
