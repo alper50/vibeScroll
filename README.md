@@ -277,9 +277,11 @@ in a point — every line has round caps and joins — lines never go below abou
 1.7pt, and there is one layer of ink with no outline or engraving. An earlier
 version tapered brows and mouth to tips and gave the eyes almond corners; at
 this size every one of those details fell below a pixel and came out as
-jaggies. Strain warms the colour by turning its hue in OKLCH, blue through
-magenta to orange, because a straight RGB mix of two near-complements passes
-through grey. Blinking is skipped entirely under Reduce Motion rather than slowed,
+jaggies. Strain only hints in colour: above half strain the accent colour
+turns at most a quarter of the way round the hue wheel towards orange — a
+violet — because each pressure already has a feature of its own and a face that
+went fully orange read as an alarm. The turn is in OKLCH rather than RGB, where
+a mix of two near-complements passes through grey. Blinking is skipped entirely under Reduce Motion rather than slowed,
 the same call `TypewriterReveal` makes about its reveal.
 
 The tongue — out when the agents are burning tokens fast — is not held still

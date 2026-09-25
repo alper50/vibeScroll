@@ -66,16 +66,16 @@ struct FaceView: View {
 
     // MARK: - Colour
 
-    /// Calm reads in the accent colour; strain warms it.
+    /// The accent colour, nudged by strain — a quarter of the way at most, see
+    /// `FaceExpression.tint`.
     ///
     /// Mixed in OKLCH and around the hue wheel rather than straight across in
     /// RGB. Blue and orange are near-complements, so a straight mix passes
-    /// through grey — the muddy mauve the first version showed under strain,
-    /// which read as ill rather than tense. Turning the hue keeps the colour
-    /// saturated the whole way: blue, through magenta and red, to orange.
+    /// through grey and the face goes a sickly blue-grey; turning the hue keeps
+    /// it saturated, which at this distance lands on a violet.
     private var tint: Color {
         Color(nsColor: FaceInk.mix(NSColor.controlAccentColor, NSColor.systemOrange,
-                                   amount: expression.strain))
+                                   amount: expression.tint))
     }
 
     /// Inside an open mouth: the ink, much darker, so the opening reads as a

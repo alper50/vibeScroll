@@ -47,6 +47,26 @@ public struct FaceExpression: Equatable, Sendable {
         self.tongue = tongue
     }
 
+    /// How far strain shifts the features' colour, 0 … `maxTint`.
+    ///
+    /// A hint, not a signal. Each pressure behind strain already has a
+    /// feature of its own — quota furrows the brow, a hot session window
+    /// narrows the eyes, circling a topic drops the mouth — so the colour only
+    /// confirms what the face is already saying, and only once the strain is
+    /// real. Taken all the way it turned the face orange, which read as an
+    /// alarm and stopped the face looking like the app.
+    public var tint: Double {
+        let over = (min(max(strain, 0), 1) - Self.tintBegins) / (1 - Self.tintBegins)
+        return max(over, 0) * Self.maxTint
+    }
+
+    /// Below this much strain the colour does not move at all.
+    public static let tintBegins = 0.5
+    /// The furthest the colour goes. A quarter of the way from the accent
+    /// colour towards orange on the hue wheel is a violet — noticeably not
+    /// the calm colour, nowhere near a warning.
+    public static let maxTint = 0.25
+
     /// Every field pulled back into range. Pressures accumulate freely and are
     /// clamped once at the end: clamping between each one would make the order
     /// they are applied in matter, which it should not.

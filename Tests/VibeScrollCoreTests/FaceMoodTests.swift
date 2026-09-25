@@ -456,3 +456,29 @@ final class FaceMoodTests: XCTestCase {
         XCTAssertEqual(a.blended(towards: b, amount: 2), b, "out-of-range amounts clamp")
     }
 }
+
+final class FaceTintTests: XCTestCase {
+
+    func testACalmOrModeratelyStrainedFaceKeepsItsColour() {
+        for strain in [0.0, 0.2, 0.5] {
+            XCTAssertEqual(FaceExpression(strain: strain).tint, 0, "strain \(strain)")
+        }
+    }
+
+    func testFullStrainIsOnlyAHint() {
+        // The whole point of the change: the face never goes orange.
+        XCTAssertEqual(FaceExpression(strain: 1).tint, FaceExpression.maxTint, accuracy: 0.0001)
+        XCTAssertLessThanOrEqual(FaceExpression.maxTint, 0.3)
+    }
+
+    func testTheTintGrowsSmoothlyBetweenTheTwo() {
+        let steps = stride(from: 0.5, through: 1.0, by: 0.1).map { FaceExpression(strain: $0).tint }
+        XCTAssertEqual(steps, steps.sorted())
+        XCTAssertEqual(FaceExpression(strain: 0.75).tint, FaceExpression.maxTint / 2, accuracy: 0.0001)
+    }
+
+    func testOutOfRangeStrainIsClamped() {
+        XCTAssertEqual(FaceExpression(strain: 3).tint, FaceExpression.maxTint, accuracy: 0.0001)
+        XCTAssertEqual(FaceExpression(strain: -1).tint, 0)
+    }
+}
