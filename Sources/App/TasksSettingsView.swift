@@ -2,17 +2,15 @@ import AppKit
 import SwiftUI
 import VibeScrollCore
 
-/// Settings → Tasks: the queue, and one button that runs a task now.
+/// Settings → Tasks: writing tasks, the queue, and what each run left behind.
 ///
-/// Nothing on this screen starts anything by itself yet. The automatic gate is
-/// deliberately the last thing added: the mechanism is worth proving with a
-/// person pressing the button before it is trusted to run at 03:00.
+/// Composing lives in `TaskComposerView` and each row in `TaskRowView`; this
+/// view holds the queue together — the gate's status, the list, clean-up, and
+/// the settings that apply to every task.
 struct TasksSettingsView: View {
     @ObservedObject private var store = TaskQueueStore.shared
     @ObservedObject private var runner = TaskRunner.shared
 
-    @State private var projectPath = ""
-    @State private var prompt = ""
     /// Tasks whose checkout git refused to delete because it holds uncommitted
     /// work. Membership turns the row's trash button into a deliberate second
     /// action rather than a repeat of the first.
@@ -25,49 +23,13 @@ struct TasksSettingsView: View {
 
     var body: some View {
         Form {
-            composer
+            TaskComposerView()
             gateStatus
             taskList
             agentSection
             settings
         }
         .formStyle(.grouped)
-    }
-
-    // MARK: - Adding
-
-    private var composer: some View {
-        Section("Add a task") {
-            HStack {
-                TextField("Project folder", text: $projectPath)
-                    .textFieldStyle(.roundedBorder)
-                Button("Choose\u{2026}") { chooseProject() }
-            }
-            TextField("What should the agent do?", text: $prompt, axis: .vertical)
-                .lineLimit(2...5)
-                .textFieldStyle(.roundedBorder)
-            HStack {
-                Spacer()
-                Button("Add to queue") {
-                    store.add(projectPath: projectPath, prompt: prompt)
-                    prompt = ""
-                }
-                .disabled(!canAdd)
-            }
-        }
-    }
-
-    private var canAdd: Bool {
-        !projectPath.trimmingCharacters(in: .whitespaces).isEmpty
-            && !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
-    private func chooseProject() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        if panel.runModal() == .OK, let url = panel.url { projectPath = url.path }
     }
 
     // MARK: - Why nothing is running
@@ -146,43 +108,25 @@ struct TasksSettingsView: View {
     }
 
     private func row(_ task: QueuedTask) -> some View {
-        HStack(spacing: 8) {
-            Circle().fill(color(for: task.status)).frame(width: 7, height: 7)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(TaskRunner.firstLine(task.prompt)).font(.system(size: 12))
-                HStack(spacing: 4) {
-                    Text(ProjectPath.displayName(task.projectPath))
-                    if let failure = task.failure {
-                        Text(verbatim: "\u{00B7}")
-                        Text(TaskRunner.label(for: failure))
-                    }
-                    if let branch = task.worktreeName {
-                        Text(verbatim: "\u{00B7}")
-                        Text(verbatim: "vibescroll/\(branch)").monospaced()
-                    }
+        VStack(alignment: .leading, spacing: 2) {
+            TaskRowView(task: task, queue: store.queue) {
+                if task.status == .pending {
+                    Button("Run now") { runner.run(task) }
+                        .disabled(runner.runningTaskID != nil || !store.queue.readiness(of: task).isReady)
+                        .help(store.queue.readiness(of: task).isReady
+                              ? "" : "Waits for the task it builds on")
                 }
-                .font(.system(size: 10))
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
-
-                if needsConfirmation.contains(task.id) {
-                    Text("This checkout has uncommitted changes. Deleting discards them.")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.orange)
+                if task.status == .failed || task.status == .parked {
+                    Button("Retry") { store.requeue(id: task.id) }
                 }
+                deleteButton(task)
             }
-
-            Spacer()
-
-            if task.status == .pending {
-                Button("Run now") { runner.run(task) }
-                    .disabled(runner.runningTaskID != nil)
+            if needsConfirmation.contains(task.id) {
+                Text("This checkout has uncommitted changes. Deleting discards them.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.orange)
+                    .padding(.leading, 18)
             }
-            if task.status == .failed || task.status == .parked {
-                Button("Retry") { store.requeue(id: task.id) }
-            }
-            deleteButton(task)
         }
     }
 
@@ -215,17 +159,6 @@ struct TasksSettingsView: View {
         .disabled(task.status == .running)
         .help(confirming ? "Discards the uncommitted changes in this checkout"
                          : "Remove the task, its checkout and its log")
-    }
-
-    private func color(for status: QueuedTask.Status) -> Color {
-        switch status {
-        case .pending:   return .secondary
-        case .running:   return .accentColor
-        case .succeeded: return .green
-        case .failed:    return .orange
-        case .parked:    return .yellow
-        case .cancelled: return .gray.opacity(0.5)
-        }
     }
 
     // MARK: - Which binary

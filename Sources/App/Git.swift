@@ -1,4 +1,5 @@
 import Foundation
+import VibeScrollCore
 
 /// The git calls the task runner needs.
 ///
@@ -50,13 +51,40 @@ enum Git {
         return run(["rev-parse", "--verify", "HEAD"], in: path).succeeded
     }
 
-    /// Creates the task's isolated checkout on a new branch, based on the
-    /// project's current HEAD.
-    static func addWorktree(project: String, path: String, branch: String) -> Bool {
+    /// Creates the task's isolated checkout on a new branch, starting from
+    /// `base` — the project's current HEAD, or the branch of the task this one
+    /// builds on.
+    static func addWorktree(project: String, path: String, branch: String,
+                            base: String = "HEAD") -> Bool {
         try? FileManager.default.createDirectory(
             atPath: (path as NSString).deletingLastPathComponent,
             withIntermediateDirectories: true)
-        return run(["worktree", "add", "-b", branch, path, "HEAD"], in: project).succeeded
+        return run(["worktree", "add", "-b", branch, path, base], in: project).succeeded
+    }
+
+    /// The commit `HEAD` points at in `directory`, or `nil`.
+    static func head(in directory: String) -> String? {
+        let out = run(["rev-parse", "HEAD"], in: directory)
+        return out.succeeded && !out.text.isEmpty ? out.text : nil
+    }
+
+    /// What changed in a worktree since `base`.
+    ///
+    /// Committed work is read from history; work left uncommitted — a failed
+    /// run, deliberately not committed — from the working tree, with files git
+    /// is not yet tracking listed without counts, since `--numstat` cannot see
+    /// them and staging them just to count would change the checkout.
+    static func changedFiles(in worktree: String, since base: String?,
+                             committed: Bool) -> [TaskReport.ChangedFile] {
+        if committed, let base {
+            return TaskReport.parseNumstat(
+                run(["diff", "--numstat", "\(base)..HEAD"], in: worktree).text)
+        }
+        let tracked = TaskReport.parseNumstat(run(["diff", "--numstat", "HEAD"], in: worktree).text)
+        let untracked = run(["ls-files", "--others", "--exclude-standard"], in: worktree).text
+            .split(whereSeparator: \.isNewline)
+            .map { TaskReport.ChangedFile(path: String($0), added: nil, removed: nil) }
+        return tracked + untracked
     }
 
     enum CommitResult {

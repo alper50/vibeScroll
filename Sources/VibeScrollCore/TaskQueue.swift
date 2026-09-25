@@ -37,7 +37,7 @@ public struct TaskQueue: Codable, Sendable, Equatable {
     /// break on `createdAt` then `id`, so the choice is stable across calls and
     /// two tasks added in the same drag can't swap places between ticks.
     public var nextPending: QueuedTask? {
-        tasks.filter { $0.status == .pending }
+        tasks.filter { $0.status == .pending && readiness(of: $0).isReady }
             .min {
                 if $0.order != $1.order { return $0.order < $1.order }
                 if $0.createdAt != $1.createdAt { return $0.createdAt < $1.createdAt }
@@ -46,6 +46,53 @@ public struct TaskQueue: Codable, Sendable, Equatable {
     }
 
     public var running: QueuedTask? { tasks.first { $0.status == .running } }
+
+    /// Whether any pending task is held back only by the task it builds on.
+    /// Told apart from an empty queue, so the gate can say why nothing runs.
+    public var hasPendingWaitingOnAnother: Bool {
+        tasks.contains { $0.status == .pending && !readiness(of: $0).isReady }
+    }
+
+    /// Whether a task can start, as far as the tasks it builds on go.
+    public enum Readiness: Equatable, Sendable {
+        /// Free to start; `baseBranch` is where it starts from, `nil` for HEAD.
+        case ready(baseBranch: String?)
+        /// The task it builds on has not finished yet.
+        case waiting(on: String)
+        /// The task it builds on ended without success. It stays put rather
+        /// than starting from HEAD, which would silently drop the earlier step.
+        case blocked(by: String)
+
+        public var isReady: Bool {
+            if case .ready = self { return true }
+            return false
+        }
+    }
+
+    public func readiness(of task: QueuedTask) -> Readiness {
+        guard let parentID = task.basedOn, let parent = self.task(id: parentID) else {
+            return .ready(baseBranch: nil)
+        }
+        switch parent.status {
+        case .succeeded:
+            guard let slug = parent.worktreeName else { return .ready(baseBranch: nil) }
+            return .ready(baseBranch: WorktreePlan.branch(slug: slug))
+        case .pending, .running:
+            return .waiting(on: parentID)
+        case .failed, .parked, .cancelled:
+            return .blocked(by: parentID)
+        }
+    }
+
+    /// Tasks a new one in `projectPath` may build on: the same project, and
+    /// not already given up on.
+    public func buildableBases(for projectPath: String) -> [QueuedTask] {
+        let project = ProjectPath.normalize(projectPath)
+        return tasks
+            .filter { ProjectPath.normalize($0.projectPath) == project }
+            .filter { [.pending, .running, .succeeded].contains($0.status) }
+            .sorted { $0.order < $1.order }
+    }
 
     public func task(id: String) -> QueuedTask? { tasks.first { $0.id == id } }
 
@@ -87,22 +134,41 @@ public struct TaskQueue: Codable, Sendable, Equatable {
 
     @discardableResult
     public mutating func add(
-        projectPath: String, prompt: String, agentKind: AgentKind = .claude, now: Date
+        projectPath: String, prompt: String, title: String? = nil, doneWhen: String? = nil,
+        basedOn: String? = nil, agentKind: AgentKind = .claude, now: Date
     ) -> QueuedTask {
         let nextOrder = (tasks.map(\.order).max() ?? -1) + 1
+        // Only a task that exists, in the same project, can be built on — a
+        // branch from another repository is not somewhere this one can start.
+        let base = basedOn.flatMap { id in
+            buildableBases(for: projectPath).contains { $0.id == id } ? id : nil
+        }
         let task = QueuedTask(
             agentKind: agentKind, order: nextOrder,
-            projectPath: projectPath, prompt: prompt, createdAt: now)
+            projectPath: projectPath, prompt: prompt, createdAt: now,
+            title: Self.nonEmpty(title), doneWhen: Self.nonEmpty(doneWhen), basedOn: base)
         tasks.append(task)
         return task
     }
 
+    private static func nonEmpty(_ text: String?) -> String? {
+        guard let text = text?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !text.isEmpty else { return nil }
+        return text
+    }
+
+    /// Removing a task that others build on turns them back into tasks that
+    /// start from HEAD. They are kept rather than removed along with it: the
+    /// prompts are work somebody wrote, and the list shows the change.
     public mutating func remove(id: String) {
-        tasks.removeAll { $0.id == id }
+        remove(ids: [id])
     }
 
     public mutating func remove(ids: Set<String>) {
         tasks.removeAll { ids.contains($0.id) }
+        for i in tasks.indices where tasks[i].basedOn.map(ids.contains) == true {
+            tasks[i].basedOn = nil
+        }
     }
 
     /// Moves `id` to `index` in the pending order and renumbers, so `order`
@@ -133,6 +199,7 @@ public struct TaskQueue: Codable, Sendable, Equatable {
         tasks[i].exitCode = nil
         tasks[i].finishedAt = nil
         tasks[i].attempts = 0
+        tasks[i].report = nil
     }
 
     public mutating func cancel(id: String) {
@@ -171,12 +238,13 @@ public struct TaskQueue: Codable, Sendable, Equatable {
     /// between a queue you can trust and one you have to audit.
     public mutating func markFinished(
         id: String, exitCode: Int32?, failure: QueuedTask.Failure?,
-        maxRateLimitRetries: Int, now: Date
+        maxRateLimitRetries: Int, report: TaskReport? = nil, now: Date
     ) {
         guard let i = tasks.firstIndex(where: { $0.id == id }) else { return }
         tasks[i].finishedAt = now
         tasks[i].exitCode = exitCode
         tasks[i].failure = failure
+        tasks[i].report = report
 
         guard let failure else {
             tasks[i].status = .succeeded

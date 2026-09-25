@@ -146,6 +146,16 @@
         }
       }
     },
+    "%lld files": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld dosya"
+          }
+        }
+      }
+    },
     "%lld hours in": {
       "localizations": {
         "tr": {
@@ -298,6 +308,16 @@
         }
       }
     },
+    "1 file": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 dosya"
+          }
+        }
+      }
+    },
     "1 rate limit this hour": {
       "localizations": {
         "tr": {
@@ -340,6 +360,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Bir görev çalışıyor"
+          }
+        }
+      }
+    },
+    "Add a dark mode toggle to Settings": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ayarlar'a karanlık mod anahtarı ekle"
           }
         }
       }
@@ -484,12 +514,32 @@
         }
       }
     },
+    "Build on": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Şunun üstüne kur"
+          }
+        }
+      }
+    },
     "Calm": {
       "localizations": {
         "tr": {
           "stringUnit": {
             "state": "translated",
             "value": "Sakin"
+          }
+        }
+      }
+    },
+    "Cancelled": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İptal edildi"
           }
         }
       }
@@ -670,6 +720,26 @@
         }
       }
     },
+    "Committed": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Commit edildi"
+          }
+        }
+      }
+    },
+    "Committed, but nothing changed.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Commit edildi ama hiçbir şey değişmedi."
+          }
+        }
+      }
+    },
     "Connect your agents": {
       "localizations": {
         "tr": {
@@ -822,6 +892,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Bitti"
+          }
+        }
+      }
+    },
+    "Done when": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bitti sayılır"
           }
         }
       }
@@ -986,6 +1066,16 @@
         }
       }
     },
+    "Hide details": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ayrıntıları gizle"
+          }
+        }
+      }
+    },
     "Hide panel": {
       "localizations": {
         "tr": {
@@ -1046,6 +1136,16 @@
         }
       }
     },
+    "Instructions": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Talimatlar"
+          }
+        }
+      }
+    },
     "Integrations": {
       "localizations": {
         "tr": {
@@ -1092,6 +1192,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Son yenileme"
+          }
+        }
+      }
+    },
+    "Left uncommitted": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Commit edilmeden bırakıldı"
           }
         }
       }
@@ -1186,6 +1296,16 @@
         }
       }
     },
+    "No project chosen": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Proje seçilmedi"
+          }
+        }
+      }
+    },
     "No quota reading — turn on the quota check in General": {
       "localizations": {
         "tr": {
@@ -1232,6 +1352,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Çalıştırılabilir bir dosya değil — görevler başlatılamaz."
+          }
+        }
+      }
+    },
+    "Nothing changed.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hiçbir şey değişmedi."
           }
         }
       }
@@ -1296,6 +1426,26 @@
         }
       }
     },
+    "Open in editor": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Editörde aç"
+          }
+        }
+      }
+    },
+    "Open log": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kaydı aç"
+          }
+        }
+      }
+    },
     "Open this session's window": {
       "localizations": {
         "tr": {
@@ -1312,6 +1462,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Adres"
+          }
+        }
+      }
+    },
+    "Parked after rate limits": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hız sınırları nedeniyle bekletildi"
           }
         }
       }
@@ -1376,12 +1536,12 @@
         }
       }
     },
-    "Project folder": {
+    "Project": {
       "localizations": {
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Proje klasörü"
+            "value": "Proje"
           }
         }
       }
@@ -1402,6 +1562,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Kuyruk bir görev başlattı"
+          }
+        }
+      }
+    },
+    "Queued": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kuyrukta"
           }
         }
       }
@@ -1666,6 +1836,26 @@
         }
       }
     },
+    "Running — the report appears here when it finishes.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Çalışıyor — bitince rapor burada görünecek."
+          }
+        }
+      }
+    },
+    "Runs in its own branch; nothing is pushed or merged.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kendi branch'inde çalışır; hiçbir şey push ya da merge edilmez."
+          }
+        }
+      }
+    },
     "SESSIONS": {
       "localizations": {
         "tr": {
@@ -1776,6 +1966,26 @@
         }
       }
     },
+    "Show details": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ayrıntıları göster"
+          }
+        }
+      }
+    },
+    "Show in Finder": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Finder'da göster"
+          }
+        }
+      }
+    },
     "Show info cards": {
       "localizations": {
         "tr": {
@@ -1832,6 +2042,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Hâlâ buradayım"
+          }
+        }
+      }
+    },
+    "Stopped and wrote BLOCKED.md": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Durdu ve BLOCKED.md yazdı"
           }
         }
       }
@@ -1906,6 +2126,16 @@
         }
       }
     },
+    "The project as it is now": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Projenin şu anki hâli"
+          }
+        }
+      }
+    },
     "This checkout has uncommitted changes. Deleting discards them.": {
       "localizations": {
         "tr": {
@@ -1922,6 +2152,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Bu görev hâlâ çalışıyor."
+          }
+        }
+      }
+    },
+    "Title": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Başlık"
           }
         }
       }
@@ -2042,6 +2282,16 @@
         }
       }
     },
+    "Waiting for an earlier task to finish": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Önceki bir görevin bitmesi bekleniyor"
+          }
+        }
+      }
+    },
     "Waiting for the window to reset": {
       "localizations": {
         "tr": {
@@ -2068,6 +2318,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Seni bekliyor"
+          }
+        }
+      }
+    },
+    "Waits for the task it builds on": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Üstüne kurulduğu görevi bekliyor"
           }
         }
       }
@@ -2134,12 +2394,22 @@
         }
       }
     },
-    "What should the agent do?": {
+    "What the agent says it did": {
       "localizations": {
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ajan ne yapsın?"
+            "value": "Ajanın yaptığını söylediği"
+          }
+        }
+      }
+    },
+    "What to change and where. Name the files or screens involved, and anything to leave alone.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neyin nerede değişeceği. İlgili dosya ya da ekranları ve dokunulmaması gerekenleri yaz."
           }
         }
       }
@@ -2170,6 +2440,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Kotan bittiğinde"
+          }
+        }
+      }
+    },
+    "Without a finish line the agent stops wherever it decides it is done.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bir bitiş çizgisi olmadan ajan, bittiğine kendi karar verdiği yerde durur."
           }
         }
       }
@@ -2254,12 +2534,32 @@
         }
       }
     },
+    "and %lld more": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ve %lld tane daha"
+          }
+        }
+      }
+    },
     "could not start": {
       "localizations": {
         "tr": {
           "stringUnit": {
             "state": "translated",
             "value": "başlatılamadı"
+          }
+        }
+      }
+    },
+    "e.g. swift test passes, and the toggle appears under General.": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ör. swift test geçiyor ve anahtar Genel altında görünüyor."
           }
         }
       }
@@ -2314,6 +2614,16 @@
         }
       }
     },
+    "new": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "yeni"
+          }
+        }
+      }
+    },
     "produced no readable result": {
       "localizations": {
         "tr": {
@@ -2361,7 +2671,6 @@
       }
     },
     "show.muhtesemYuzyil": {
-      "extractionState": "extracted_with_value",
       "localizations": {
         "en": {
           "stringUnit": {
@@ -2651,6 +2960,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "xAI Grok Build CLI (~/.grok/hooks/vibescroll.json)"
+          }
+        }
+      }
+    },
+    "↳ blocked: “%@” did not succeed — retry it to continue": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "↳ bloke: “%@” başarılı olmadı — devam etmek için onu yeniden dene"
+          }
+        }
+      }
+    },
+    "↳ builds on “%@”": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "↳ “%@” üstüne kurulu"
+          }
+        }
+      }
+    },
+    "↳ waits for “%@”": {
+      "localizations": {
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "↳ “%@” görevini bekliyor"
           }
         }
       }

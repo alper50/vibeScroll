@@ -33,9 +33,11 @@ final class TaskQueueStore: ObservableObject {
 
     // MARK: - Editing
 
-    func add(projectPath: String, prompt: String) {
+    func add(projectPath: String, prompt: String, title: String?, doneWhen: String?,
+             basedOn: String?) {
         var q = queue
-        q.add(projectPath: projectPath, prompt: prompt, now: Date())
+        q.add(projectPath: projectPath, prompt: prompt, title: title, doneWhen: doneWhen,
+              basedOn: basedOn, now: Date())
         apply(q)
     }
 
@@ -136,11 +138,12 @@ final class TaskQueueStore: ObservableObject {
     }
 
     func markFinished(
-        id: String, exitCode: Int32?, failure: QueuedTask.Failure?, maxRateLimitRetries: Int
+        id: String, exitCode: Int32?, failure: QueuedTask.Failure?, maxRateLimitRetries: Int,
+        report: TaskReport? = nil
     ) {
         var q = queue
         q.markFinished(id: id, exitCode: exitCode, failure: failure,
-                       maxRateLimitRetries: maxRateLimitRetries, now: Date())
+                       maxRateLimitRetries: maxRateLimitRetries, report: report, now: Date())
         apply(q)
     }
 

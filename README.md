@@ -211,6 +211,25 @@ queue holds: that spending is running ahead of the clock and comes out of days
 still to be worked. At 88% with three hours left, it runs: that quota is about
 to expire regardless.
 
+A task is written in parts rather than as one box: a short title (the list
+entry, the branch name and the commit message), the instructions, and — worth
+filling in — what "done" looks like. The finish line goes to the agent as its
+own `## Done when` section, so it has something to test itself against instead
+of stopping wherever it feels finished.
+
+A task can **build on** an earlier one in the same project. It starts from that
+task's branch rather than from HEAD, waits while that task is queued or
+running, and is held — not started from HEAD, which would silently drop the
+earlier step — if it fails; retrying the earlier task releases it. The agent is
+told which task it continues from.
+
+Every run leaves a **report** on its task, read by opening the row: the agent's
+own summary, `BLOCKED.md` if it stopped and said why, the files it changed with
+line counts (from history when committed, from the working tree when a failed
+run was left as it fell), how long it took and the tokens it used — plus
+buttons to open the worktree in the editor, show it in Finder, or open the
+log. The summary used to go into a notification and nowhere else.
+
 Only Claude Code has a verified headless invocation, so it is the only agent a
 task launches today; `AgentLaunch` returns `nil` for the rest rather than
 guessing at an invocation and spending a window on it. The isolation is plain

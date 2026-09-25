@@ -82,6 +82,8 @@ public enum TaskRunway {
         case sessionWindowSpent(percent: Int)
         case weeklyReserve(percent: Int, reserve: Int)
         case aheadOfPace(usedPercent: Int, elapsedPercent: Int)
+        /// Pending tasks exist, but each is waiting on a task it builds on.
+        case waitingOnEarlierTask
         case agentBusy
         case userActive
         case cooldown(remaining: TimeInterval)
@@ -105,6 +107,8 @@ public enum TaskRunway {
                 return String(localized: "Weekly at \(percent)%, holding the last \(100 - reserve)%")
             case .aheadOfPace(let used, let elapsed):
                 return String(localized: "Weekly \(used)% spent, \(elapsed)% of the week gone")
+            case .waitingOnEarlierTask:
+                return String(localized: "Waiting for an earlier task to finish")
             case .agentBusy:
                 return String(localized: "Your own agent is working")
             case .userActive:
@@ -156,7 +160,9 @@ public enum TaskRunway {
         now: Date
     ) -> Decision {
         if queue.running != nil { return .hold(.taskAlreadyRunning) }
-        guard let next = queue.nextPending else { return .hold(.queueEmpty) }
+        guard let next = queue.nextPending else {
+            return .hold(queue.hasPendingWaitingOnAnother ? .waitingOnEarlierTask : .queueEmpty)
+        }
 
         let started = queue.launchCount(on: now, calendar: calendar)
         guard started < policy.maxLaunchesPerDay else {

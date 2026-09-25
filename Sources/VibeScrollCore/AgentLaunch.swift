@@ -70,6 +70,29 @@ public enum AgentLaunch {
         }
     }
 
+    /// The prompt as the agent receives it: the instructions, then — when they
+    /// were given — where the work picks up from and when it is finished.
+    ///
+    /// Sections rather than one run-on paragraph, because the agent reads the
+    /// finish line as a checklist it can test itself against.
+    public static func composedPrompt(
+        instructions: String, doneWhen: String?, continuesFrom previousTitle: String?
+    ) -> String {
+        var parts = [instructions.trimmingCharacters(in: .whitespacesAndNewlines)]
+        if let previousTitle, !previousTitle.isEmpty {
+            parts.append("""
+                ## Context
+                This continues an earlier task, “\(previousTitle)”. Its changes are \
+                already committed on this branch; build on them rather than redoing them.
+                """)
+        }
+        if let doneWhen = doneWhen?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !doneWhen.isEmpty {
+            parts.append("## Done when\n\(doneWhen)")
+        }
+        return parts.joined(separator: "\n\n")
+    }
+
     /// The default instruction appended to every queued prompt.
     ///
     /// A queued task runs with nobody to answer it. Without this an agent that

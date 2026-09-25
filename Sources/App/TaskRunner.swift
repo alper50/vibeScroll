@@ -120,6 +120,11 @@ final class TaskRunner: ObservableObject {
 
     func run(_ task: QueuedTask, policy: TaskRunway.Policy = .init()) {
         guard runningTaskID == nil else { return }
+        // A task that builds on another starts from that task's branch, so it
+        // cannot start before that branch has its work on it — by hand or not.
+        let queue = TaskQueueStore.shared.queue
+        guard case .ready(let baseBranch) = queue.readiness(of: task) else { return }
+        let previousTitle = task.basedOn.flatMap(queue.task(id:))?.displayTitle
 
         guard let executable = Self.discoverExecutable() else {
             fail(task, .launchFailed, policy: policy,
@@ -136,14 +141,16 @@ final class TaskRunner: ObservableObject {
 
         let sessionId = UUID().uuidString
         let plan = WorktreePlan.plan(
-            projectPath: task.projectPath, prompt: task.prompt,
+            projectPath: task.projectPath, prompt: task.displayTitle,
             uniqueSuffix: task.id, worktreeRoot: TaskQueueStore.worktreeRoot)
+        let prompt = AgentLaunch.composedPrompt(
+            instructions: task.prompt, doneWhen: task.doneWhen, continuesFrom: previousTitle)
 
         // The session id is handed to the agent rather than discovered from it,
         // so the session its hooks report is matched to this task by identity
         // instead of by guessing from paths or timing.
         guard let launch = AgentLaunch.plan(
-            for: task.agentKind, executable: executable, prompt: task.prompt,
+            for: task.agentKind, executable: executable, prompt: prompt,
             sessionId: sessionId, workingDirectory: plan.path,
             systemPromptSuffix: systemPromptSuffix)
         else {
@@ -162,9 +169,10 @@ final class TaskRunner: ObservableObject {
         let projectPath = task.projectPath
         let commitMessage = Self.commitMessage(for: task)
 
+        let base = baseBranch ?? "HEAD"
         Task.detached(priority: .utility) {
             let outcome = Self.execute(
-                launch: launch, worktree: plan, project: projectPath,
+                launch: launch, worktree: plan, project: projectPath, base: base,
                 logPath: logPath, commitMessage: commitMessage, timeout: timeout)
             await MainActor.run { [weak self] in
                 self?.finish(task, outcome: outcome, policy: policy)
@@ -179,6 +187,7 @@ final class TaskRunner: ObservableObject {
         let exitCode: Int32?
         let result: AgentRunResult?
         let note: String?
+        var report: TaskReport? = nil
     }
 
     private func finish(_ task: QueuedTask, outcome: Outcome, policy: TaskRunway.Policy) {
@@ -186,7 +195,7 @@ final class TaskRunner: ObservableObject {
         if let note = outcome.note { lastError = note }
         TaskQueueStore.shared.markFinished(
             id: task.id, exitCode: outcome.exitCode, failure: outcome.failure,
-            maxRateLimitRetries: policy.maxRateLimitRetries)
+            maxRateLimitRetries: policy.maxRateLimitRetries, report: outcome.report)
         notify(task: task, failure: outcome.failure, result: outcome.result)
     }
 
@@ -235,12 +244,14 @@ final class TaskRunner: ObservableObject {
     // MARK: - The blocking part
 
     private nonisolated static func execute(
-        launch: AgentLaunch.Plan, worktree: WorktreePlan.Plan, project: String,
+        launch: AgentLaunch.Plan, worktree: WorktreePlan.Plan, project: String, base: String,
         logPath: String, commitMessage: String, timeout: TimeInterval
     ) -> Outcome {
-        var log = "$ git worktree add -b \(worktree.branch) \(worktree.path)\n"
+        var log = "$ git worktree add -b \(worktree.branch) \(worktree.path) \(base)\n"
+        let started = Date()
 
-        guard Git.addWorktree(project: project, path: worktree.path, branch: worktree.branch) else {
+        guard Git.addWorktree(project: project, path: worktree.path, branch: worktree.branch,
+                              base: base) else {
             write(log + "worktree creation failed\n", to: logPath)
             return Outcome(failure: .launchFailed, exitCode: nil, result: nil,
                            note: String(localized: "Could not create the worktree at \(worktree.path)."))
@@ -255,6 +266,11 @@ final class TaskRunner: ObservableObject {
 
         let (failure, result) = TaskOutcome.classify(
             exitCode: run.exitCode, stdout: run.stdout, timedOut: run.timedOut)
+        let baseCommit = Git.head(in: worktree.path)
+        // Read before any commit, and whatever the outcome: a blocker is most
+        // worth reading exactly when the run did not succeed.
+        let blocker = readBlocker(in: worktree.path)
+        var committed = false
 
         // Only a clean run is committed: a half-finished attempt is more useful
         // left as it fell, where the working tree itself shows how far it got.
@@ -262,6 +278,7 @@ final class TaskRunner: ObservableObject {
         if failure == nil {
             switch Git.commitAll(worktree: worktree.path, message: commitMessage) {
             case .committed:
+                committed = true
                 log += "\n--- committed to \(worktree.branch) ---\n"
             case .nothingToCommit:
                 log += "\n--- nothing to commit ---\n"
@@ -274,7 +291,29 @@ final class TaskRunner: ObservableObject {
         }
 
         write(log, to: logPath)
-        return Outcome(failure: failure, exitCode: run.exitCode, result: result, note: note)
+        let report = TaskReport(
+            summary: result?.text?.trimmingCharacters(in: .whitespacesAndNewlines),
+            blocker: blocker,
+            changedFiles: Git.changedFiles(in: worktree.path, since: baseCommit,
+                                           committed: committed),
+            committed: committed,
+            baseCommit: baseCommit,
+            durationSeconds: Date().timeIntervalSince(started),
+            inputTokens: result?.inputTokens ?? 0,
+            outputTokens: result?.outputTokens ?? 0)
+        return Outcome(failure: failure, exitCode: run.exitCode, result: result, note: note,
+                       report: report)
+    }
+
+    /// `BLOCKED.md`, where the unattended instructions ask the agent to say
+    /// why it stopped. Capped: it is shown in a settings row, not a document
+    /// viewer, and the whole file is still in the worktree.
+    private nonisolated static func readBlocker(in worktree: String) -> String? {
+        let path = (worktree as NSString).appendingPathComponent("BLOCKED.md")
+        guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return nil }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return trimmed.count > 1500 ? String(trimmed.prefix(1499)) + "\u{2026}" : trimmed
     }
 
     private struct ProcessRun {
@@ -331,6 +370,13 @@ final class TaskRunner: ObservableObject {
 
         out.fileHandleForReading.readabilityHandler = nil
         err.fileHandleForReading.readabilityHandler = nil
+        // The process exiting does not mean every byte has been through the
+        // handlers: the last chunk can still be sitting in the pipe. The agent's
+        // result JSON is the last thing it writes, so dropping that chunk
+        // turned a finished task into "produced no readable result". Whatever
+        // is left is read here, now that the writer is gone.
+        buffers.appendOut(out.fileHandleForReading.readDataToEndOfFile())
+        buffers.appendErr(err.fileHandleForReading.readDataToEndOfFile())
 
         return ProcessRun(
             exitCode: process.terminationStatus,
@@ -376,7 +422,7 @@ final class TaskRunner: ObservableObject {
     }
 
     static func commitMessage(for task: QueuedTask) -> String {
-        "vibescroll: \(firstLine(task.prompt))"
+        "vibescroll: \(task.displayTitle)"
     }
 
     /// Finds the Claude Code binary.
