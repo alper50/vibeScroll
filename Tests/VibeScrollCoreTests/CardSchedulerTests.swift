@@ -56,10 +56,66 @@ final class CardSchedulerTests: XCTestCase {
 
     func testPickIsDeterministicOnTies() {
         let s = CardScheduler()
-        // Two never-shown cards tie on timestamp; id breaks it, so repeated
-        // calls can't produce a different card and flicker the UI.
-        XCTAssertEqual(s.pick(from: [card("b"), card("a")], now: t0)?.id, "a")
-        XCTAssertEqual(s.pick(from: [card("a"), card("b")], now: t0)?.id, "a")
+        // Never-shown cards tie on timestamp and on show; the seeded order
+        // breaks it, so repeated calls — in any input order — can't produce a
+        // different card and flicker the UI.
+        let first = s.pick(from: [card("b"), card("a"), card("c")], now: t0)?.id
+        XCTAssertEqual(s.pick(from: [card("c"), card("a"), card("b")], now: t0)?.id, first)
+        XCTAssertEqual(s.pick(from: [card("a"), card("b"), card("c")], now: t0)?.id, first)
+    }
+
+    // MARK: - History across launches
+
+    func testAHistoryFromAnEarlierRunIsHonoured() {
+        // The bug this fixes: every relaunch started from the same first card.
+        let fresh = CardScheduler()
+        let first = fresh.pick(from: [card("a"), card("b")], now: t0)!
+        let relaunched = CardScheduler(history: [first.id: t0.addingTimeInterval(-600)])
+        XCTAssertNotEqual(relaunched.pick(from: [card("a"), card("b")], now: t0)?.id, first.id,
+                          "a card read ten minutes ago must not open the next run")
+    }
+
+    func testHistoryReadsBackWhatWasShown() {
+        let s = CardScheduler()
+        s.recordShown(card("a"), now: t0)
+        XCTAssertEqual(s.history, ["a": t0])
+    }
+
+    func testResettingThePacingKeepsTheReadingHistory() {
+        // Turning cards off and on again is not a reason to see them again.
+        let s = CardScheduler(policy: .init(cardRepeatWindow: 3600))
+        s.recordShown(card("a"), topic: .testing, now: t0)
+        s.reset()
+        XCTAssertEqual(s.history["a"], t0)
+        XCTAssertNil(s.pick(from: [card("a")], now: t0.addingTimeInterval(60)))
+    }
+
+    func testOldHistoryIsPruned() {
+        let old = t0.addingTimeInterval(-100 * 24 * 3600)
+        let recent = t0.addingTimeInterval(-3600)
+        let kept = CardScheduler.pruned(["old": old, "recent": recent], now: t0)
+        XCTAssertEqual(kept, ["recent": recent])
+    }
+
+    // MARK: - Order of unseen cards
+
+    func testTheSeedDecidesTheOrderNotTheAlphabet() {
+        // Alphabetical order put every "bb-" card first. Different installs
+        // should start in different places.
+        let pool = (0..<20).map { card("card-\($0)") }
+        let firsts = Set((0..<8).map { seed in
+            CardScheduler(orderSeed: UInt64(seed)).pick(from: pool, now: t0)!.id
+        })
+        XCTAssertGreaterThan(firsts.count, 1)
+    }
+
+    func testTheOrderIsStableAcrossLaunches() {
+        // Not `Hasher`, which is re-seeded per process: the same seed must
+        // give the same rank every time.
+        XCTAssertEqual(CardScheduler.orderKey("bb-pizza", seed: 42),
+                       CardScheduler.orderKey("bb-pizza", seed: 42))
+        XCTAssertNotEqual(CardScheduler.orderKey("bb-pizza", seed: 42),
+                          CardScheduler.orderKey("bb-pizza", seed: 43))
     }
 
     func testPickReturnsNilWhenEverythingIsInsideItsRepeatWindow() {

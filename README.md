@@ -397,6 +397,13 @@ show directly. Browsing suppresses automatic cards until you dismiss — pressin
 means you are reading, and the surface should not replace itself under you.
 Cards you browse to count as seen, so they will not resurface on their own.
 
+What has been read survives a relaunch: when each card was last shown is kept
+in the user defaults (pruned after 90 days), so quitting and reopening carries
+on through the catalogue instead of opening on the card you read ten minutes
+ago. Among cards not yet seen, the show seen longest ago goes next, so shows
+alternate; within a show the order is shuffled once per install — stable, but
+not alphabetical.
+
 Card text is revealed character by character, locally — there is no streaming
 involved, just a timed reveal. Click the card to skip to the end, and the effect
 is disabled entirely when the system asks for reduced motion.

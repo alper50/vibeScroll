@@ -20,8 +20,12 @@ import Foundation
 ///  4. **Card repeat window** — a specific card id isn't shown twice inside
 ///     `cardRepeatWindow`, so the user sees the whole pool before repeats.
 ///
-/// State is intentionally in-memory: a restart earning the user one extra card
-/// is a better trade than persisting a schedule that can go stale.
+/// Two kinds of state, kept deliberately apart. The pacing gates (last card,
+/// last card per activity) live in memory: a restart earning one extra card is
+/// a fair trade. What has been *read* (`history`) is handed in and read back
+/// out so the app can keep it on disk — losing it meant every relaunch started
+/// the catalogue over from the same first card, which is the one thing a
+/// reader notices immediately.
 public final class CardScheduler {
 
     public struct Policy: Sendable, Equatable {
@@ -57,20 +61,44 @@ public final class CardScheduler {
     private var lastCardAt: Date?
     private var lastTopicAt: [TopicCategory: Date] = [:]
     private var lastShownAt: [String: Date] = [:]
+    private let orderSeed: UInt64
 
-    public init(policy: Policy = Policy()) {
+    /// - Parameters:
+    ///   - history: when each card was last shown, as saved from a previous run.
+    ///   - orderSeed: fixes the order unseen cards come in. One value per
+    ///     install, so the order is stable from call to call and launch to
+    ///     launch, but is not the alphabetical order of card ids — which put
+    ///     every Breaking Bad card ahead of everything else.
+    public init(policy: Policy = Policy(), history: [String: Date] = [:], orderSeed: UInt64 = 0) {
         self.policy = policy
+        self.lastShownAt = history
+        self.orderSeed = orderSeed
+    }
+
+    /// When each card was last shown — the part worth saving across launches.
+    public var history: [String: Date] { lastShownAt }
+
+    /// `history` without entries older than `keepFor`. Bounds what is kept
+    /// on disk once cards are retired from the catalogue: nothing is lost by
+    /// forgetting a card that was shown three months ago, it simply counts as
+    /// unseen again.
+    public static func pruned(
+        _ history: [String: Date], now: Date, keepFor: TimeInterval = 90 * 24 * 3600
+    ) -> [String: Date] {
+        history.filter { now.timeIntervalSince($0.value) <= keepFor }
     }
 
     public func update(policy: Policy) {
         self.policy = policy
     }
 
-    /// Clears all pacing state (e.g. the user re-enabled cards after muting).
+    /// Clears the pacing gates (e.g. the user re-enabled cards after muting).
+    ///
+    /// Not the reading history: turning cards off and on again is not a
+    /// reason to be shown the same cards again.
     public func reset() {
         lastCardAt = nil
         lastTopicAt.removeAll()
-        lastShownAt.removeAll()
     }
 
     /// Whether `topic` may show a card now. `topicSince` is when the session
@@ -98,15 +126,46 @@ public final class CardScheduler {
     /// Least recently shown card, ignoring the repeat window entirely. Returns
     /// `nil` only for an empty list.
     ///
-    /// Never-shown cards sort ahead of ever-shown ones (`distantPast`), then
-    /// oldest-shown first. Ties break on id, so repeated calls with the same
-    /// state can never return a different card and flicker the surface.
+    /// Three keys, in order:
+    ///  1. When the card was last shown — never-shown first, then oldest.
+    ///  2. When its *show* was last shown, so among cards equally unseen the
+    ///     shows take turns instead of one show's whole run coming first.
+    ///  3. The install's shuffled order (`orderSeed`), then the id — never a
+    ///     tie left open, so the same state always gives the same card and
+    ///     the surface cannot flicker between two.
     public func leastRecentlyShown(in candidates: [InfoCard], now: Date) -> InfoCard? {
-        candidates.min {
-            let a = lastShownAt[$0.id] ?? .distantPast
-            let b = lastShownAt[$1.id] ?? .distantPast
-            return a == b ? $0.id < $1.id : a < b
+        var showLastSeen: [CardCategory: Date] = [:]
+        for card in candidates {
+            guard let shown = lastShownAt[card.id] else { continue }
+            showLastSeen[card.category] = max(showLastSeen[card.category] ?? .distantPast, shown)
         }
+        return candidates.min { a, b in
+            let shownA = lastShownAt[a.id] ?? .distantPast
+            let shownB = lastShownAt[b.id] ?? .distantPast
+            if shownA != shownB { return shownA < shownB }
+            let showA = showLastSeen[a.category] ?? .distantPast
+            let showB = showLastSeen[b.category] ?? .distantPast
+            if showA != showB { return showA < showB }
+            let keyA = Self.orderKey(a.id, seed: orderSeed)
+            let keyB = Self.orderKey(b.id, seed: orderSeed)
+            return keyA != keyB ? keyA < keyB : a.id < b.id
+        }
+    }
+
+    /// A stable pseudo-random rank for a card: FNV-1a over the seed and the id.
+    ///
+    /// Written out rather than using `Hasher`, which Swift re-seeds on every
+    /// launch — the order would change each time the app started, which is
+    /// the opposite of the point.
+    static func orderKey(_ id: String, seed: UInt64) -> UInt64 {
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        func mix(_ byte: UInt8) {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x0000_0100_0000_01b3
+        }
+        withUnsafeBytes(of: seed.littleEndian) { $0.forEach(mix) }
+        id.utf8.forEach(mix)
+        return hash
     }
 
     /// Manual navigation ("Next"), which answers to none of the pacing gates —

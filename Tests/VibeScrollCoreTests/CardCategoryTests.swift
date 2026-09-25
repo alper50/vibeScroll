@@ -31,17 +31,20 @@ final class CardCategoryTests: XCTestCase {
     }
 
     func testShowsTakeTurnsAcrossAutomaticCards() {
-        // Least recently shown first, over the whole pool: two cards in a row
-        // come from two different shows while both have unseen material.
+        // Among cards equally unseen, the show seen longest ago goes next —
+        // so a fresh catalogue alternates shows instead of running through
+        // one show's cards before touching the next.
         let scheduler = CardScheduler(policy: .unthrottled)
-        let pool = [card("bb1", .breakingBad), card("got1", .gameOfThrones),
-                    card("bb2", .breakingBad)]
-        let first = scheduler.next(topic: .reading, topicSince: t0, candidates: pool, now: t0)
-        let second = scheduler.next(topic: .writing, topicSince: t0, candidates: pool,
-                                    now: t0.addingTimeInterval(1))
-        XCTAssertEqual(first?.id, "bb1")
-        XCTAssertEqual(second?.id, "bb2", "ties break on id, never on show")
-        XCTAssertNotEqual(first?.id, second?.id)
+        let pool = [card("bb1", .breakingBad), card("bb2", .breakingBad),
+                    card("got1", .gameOfThrones), card("got2", .gameOfThrones),
+                    card("of1", .theOffice), card("of2", .theOffice)]
+        var shows: [CardCategory] = []
+        for step in 0..<3 {
+            let shown = scheduler.next(topic: .reading, topicSince: t0, candidates: pool,
+                                       now: t0.addingTimeInterval(Double(step)))
+            shows.append(shown!.category)
+        }
+        XCTAssertEqual(Set(shows).count, 3, "three cards, three shows: \(shows)")
     }
 
     func testTheTopicCooldownBelongsToTheActivityNotTheShow() {

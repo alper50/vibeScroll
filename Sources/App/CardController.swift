@@ -98,7 +98,10 @@ final class CardController: ObservableObject {
     private static let faceWhenIdleKey = "vibescroll.showFaceWhenIdle"
     private static let followsPointerKey = "vibescroll.faceFollowsPointer"
 
-    private let scheduler = CardScheduler()
+    /// Starts from what was read in earlier runs, so a relaunch carries on
+    /// through the catalogue instead of opening on the same first card.
+    private let scheduler = CardScheduler(history: CardHistory.load(),
+                                          orderSeed: CardHistory.orderSeed)
     private var momentGate = MomentGate()
     private var momentExpiry: DispatchWorkItem?
 
@@ -513,6 +516,10 @@ final class CardController: ObservableObject {
 
     private func present(_ card: InfoCard, context: [AgentSession]) {
         cardContentHeight = CardMeasure.contentHeight(of: card, context: context)
+        // Every way a card reaches the screen — automatic, Next, the picker —
+        // comes through here, having just been recorded as shown. Saved here
+        // once, so no path can forget to.
+        CardHistory.save(scheduler.history)
         current = card
         self.context = context
         mode = .card
