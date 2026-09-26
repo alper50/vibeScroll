@@ -50,11 +50,9 @@ struct FaceWindowView: View {
         }
         .frame(width: CardLayout.faceWindowWidth, height: CardLayout.faceWindowHeight,
                alignment: .top)
-        // Both stop with the window. A face nobody can see has no reason to
-        // keep a timer alive, which is the whole reason either of these is
-        // affordable — they sleep for seconds and animate for milliseconds.
-        .onAppear { blink.start(); TongueModel.shared.start(); GazeModel.shared.startIdleMotion() }
-        .onDisappear { blink.stop(); TongueModel.shared.stop(); GazeModel.shared.stopIdleMotion() }
+        // The blink, tongue and idle-gaze clocks are run by `FaceMotion`,
+        // which `CardController` starts and stops with the face itself — a
+        // view is not told when its window is ordered out.
     }
 
     private var blob: some View {

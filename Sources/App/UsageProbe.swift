@@ -25,6 +25,10 @@ final class UsageProbe: ObservableObject {
     static let shared = UsageProbe()
 
     @Published private(set) var snapshot: QuotaSnapshot?
+
+    /// A made-up reading for `vibescroll notch`, which draws the island
+    /// without reaching a provider.
+    func showSample(_ sample: QuotaSnapshot) { snapshot = sample }
     /// Set when the last poll failed, for the Settings caption only.
     @Published private(set) var lastError: String?
 

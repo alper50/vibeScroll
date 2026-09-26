@@ -7,11 +7,11 @@ struct SettingsView: View {
     /// the step it is describing.
     enum Tab: Hashable { case general, integrations, content, tasks, permissions }
 
-    @State private var tab: Tab = .general
+    @ObservedObject private var navigation = SettingsNavigation.shared
 
     var body: some View {
-        TabView(selection: $tab) {
-            GeneralSettingsView(tab: $tab)
+        TabView(selection: $navigation.tab) {
+            GeneralSettingsView(tab: $navigation.tab)
                 .tabItem { Label("General", systemImage: "gearshape") }
                 .tag(Tab.general)
             IntegrationsSettingsView()
@@ -34,6 +34,14 @@ struct SettingsView: View {
         // five; the rest is room for one more.
         .frame(width: 700, height: 540)
     }
+}
+
+/// Which tab is showing. Outside the view so other surfaces — the notch's
+/// task page — can open the window on the tab they mean.
+@MainActor
+final class SettingsNavigation: ObservableObject {
+    static let shared = SettingsNavigation()
+    @Published var tab: SettingsView.Tab = .general
 }
 
 // MARK: - General
@@ -72,6 +80,7 @@ struct GeneralSettingsView: View {
     var body: some View {
         Form {
             SetupChecklist(tab: $tab)
+            AppearanceSection()
             StartupSection()
 
             Section {
@@ -178,6 +187,45 @@ struct SetupChecklist: View {
 }
 
 /// The face's settings.
+/// Floating face or notch.
+///
+/// The notch row is there on every Mac and disabled on those without one, so
+/// the option is discoverable rather than missing — and so somebody with the
+/// lid closed can see why their notch choice is showing a floating face.
+struct AppearanceSection: View {
+    @ObservedObject private var display = DisplayStyleStore.shared
+
+    var body: some View {
+        Section {
+            Picker("Show vibeScroll", selection: Binding(
+                get: { display.preferred ?? .floating },
+                set: { display.preferred = $0 }
+            )) {
+                Text("As a floating face").tag(DisplayStyle.floating)
+                Text("In the notch").tag(DisplayStyle.notch)
+            }
+            .pickerStyle(.radioGroup)
+            .disabled(!display.notchAvailable)
+
+            Toggle("Hide in full-screen apps", isOn: $display.hidesInFullscreen)
+                .disabled(display.effective != .notch)
+        } header: {
+            Text("Appearance")
+        } footer: {
+            Text(footer).font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private var footer: String {
+        if !display.notchAvailable {
+            return display.preferred == .notch
+                ? String(localized: "No notched display is connected, so the face is floating for now. It moves back into the notch when the built-in display returns.")
+                : String(localized: "This display has no notch, so the face floats. The notch style is available on MacBooks with a camera notch.")
+        }
+        return String(localized: "Both show the same sessions, cards and tasks. In the notch, the session quota and running agents sit beside the camera and a dot marks a waiting card; hover to open, click to keep it open. The menu bar icon is hidden there — right-click the notch for its menu.")
+    }
+}
+
 struct FaceSection: View {
     @ObservedObject private var cards = CardController.shared
 

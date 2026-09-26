@@ -20,6 +20,9 @@ struct VibeScrollMain {
         case "face":
             // Development affordance: the drawing cannot be judged from a test.
             FacePreviewCLI.run()
+        case "notch":
+            // Same kind of affordance, for the notch island.
+            NotchPreviewCLI.run(arguments: Array(args.dropFirst()))
         default:
             VibeScrollApp.main()
         }

@@ -122,6 +122,60 @@ struct InfoCardView: View {
                     iconButton("xmark", help: "Close") { controller.dismissCard() }
             }
 
+            SessionListView()
+        }
+        .padding(14)
+    }
+
+    // MARK: - Show picker
+
+    /// Built like the session list rather than as a pop-up menu.
+    ///
+    /// The panel is a `.nonactivatingPanel` — it must never take focus from the
+    /// terminal you are typing in — and a menu that opens outside the bounds of
+    /// a window that cannot become key is a fight with AppKit for no gain. The
+    /// panel already knows how to be a list and how to resize to one, so this
+    /// is the same move the sessions button makes.
+    @ViewBuilder
+    private var categoriesBody: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Text("SHOWS")
+                    .font(.system(size: 9, weight: .bold))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(Color.accentColor.opacity(0.16)))
+                    .foregroundStyle(Color.accentColor)
+
+                Spacer()
+
+                if controller.hasCardBehind {
+                    iconButton("chevron.left", help: "Back to card") { controller.showCard() }
+                }
+                iconButton("xmark", help: "Close") { controller.dismissCard() }
+            }
+
+            CategoryListView()
+        }
+        .padding(14)
+    }
+}
+
+// MARK: - Session list
+
+/// Every live session, one row each, with the quota line under them.
+///
+/// Its own view because two surfaces draw it: the floating panel under its
+/// "SESSIONS" header, and the notch's first page. One copy of the rows is what
+/// keeps the two from disagreeing about what a session looks like.
+struct SessionListView: View {
+    @ObservedObject private var controller = CardController.shared
+    /// Run after a row has handed its window forward — the notch folds itself
+    /// away, since the thing asked for is now in front.
+    var onFocus: () -> Void = {}
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
             if controller.sessions.isEmpty {
                 Spacer()
                 Text("No active agents")
@@ -147,7 +201,6 @@ struct InfoCardView: View {
                 quotaFooter(quota)
             }
         }
-        .padding(14)
     }
 
     /// Quota under the list rather than on each row.
@@ -209,84 +262,6 @@ struct InfoCardView: View {
         }
     }
 
-    // MARK: - Show picker
-
-    /// Built like the session list rather than as a pop-up menu.
-    ///
-    /// The panel is a `.nonactivatingPanel` — it must never take focus from the
-    /// terminal you are typing in — and a menu that opens outside the bounds of
-    /// a window that cannot become key is a fight with AppKit for no gain. The
-    /// panel already knows how to be a list and how to resize to one, so this
-    /// is the same move the sessions button makes.
-    @ViewBuilder
-    private var categoriesBody: some View {
-        let topics = controller.browsableCategories
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Text("SHOWS")
-                    .font(.system(size: 9, weight: .bold))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(Capsule().fill(Color.accentColor.opacity(0.16)))
-                    .foregroundStyle(Color.accentColor)
-
-                Spacer()
-
-                if controller.hasCardBehind {
-                    iconButton("chevron.left", help: "Back to card") { controller.showCard() }
-                }
-                iconButton("xmark", help: "Close") { controller.dismissCard() }
-            }
-
-            if topics.isEmpty {
-                Spacer()
-                Text("No cards yet")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
-                    .frame(maxWidth: .infinity)
-                Spacer()
-            } else {
-                ScrollView(.vertical, showsIndicators: false) {
-                    VStack(spacing: 0) {
-                        ForEach(topics, id: \.category) { topic in
-                            categoryRow(topic.category, count: topic.count)
-                        }
-                    }
-                }
-            }
-        }
-        .padding(14)
-    }
-
-    private func categoryRow(_ category: CardCategory, count: Int) -> some View {
-        // The show the visible card came from, not whatever the agent is on:
-        // this list sits in front of a card, and marking a different row would
-        // be pointing at something the user cannot see.
-        let isCurrent = controller.current?.category == category
-        return Button { controller.showCategory(category) } label: {
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(isCurrent ? Color.accentColor : Color.clear)
-                    .frame(width: 6, height: 6)
-
-                Text(verbatim: category.label)
-                    .font(.system(size: 11, weight: isCurrent ? .semibold : .regular))
-                    .lineLimit(1)
-
-                Spacer(minLength: 6)
-
-                Text(verbatim: "\(count)")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-                    .monospacedDigit()
-            }
-            .padding(.horizontal, 4)
-            .frame(height: CardLayout.rowHeight)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
     private func row(for session: AgentSession, now: Date) -> some View {
         let clickable = SessionFocus.canFocus(session)
         return HStack(spacing: 6) {
@@ -338,7 +313,7 @@ struct InfoCardView: View {
         }
         .frame(height: CardLayout.rowHeight)
         .contentShape(Rectangle())
-        .onTapGesture { if clickable { controller.focus(session) } }
+        .onTapGesture { if clickable { controller.focus(session); onFocus() } }
         .help(clickable ? "Open this session's window" : "")
     }
 
@@ -350,6 +325,67 @@ struct InfoCardView: View {
         case .registered: return .secondary
         case .idle:       return .gray.opacity(0.5)
         }
+    }
+}
+
+// MARK: - Show list
+
+/// The shows that have cards, with their counts. Picking one jumps to it.
+///
+/// Shared like the session list: the floating panel draws it under "SHOWS",
+/// the notch on its card page.
+struct CategoryListView: View {
+    @ObservedObject private var controller = CardController.shared
+
+    var body: some View {
+        let topics = controller.browsableCategories
+        if topics.isEmpty {
+            VStack {
+                Spacer()
+                Text("No cards yet")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity)
+                Spacer()
+            }
+        } else {
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 0) {
+                    ForEach(topics, id: \.category) { topic in
+                        categoryRow(topic.category, count: topic.count)
+                    }
+                }
+            }
+        }
+    }
+
+    private func categoryRow(_ category: CardCategory, count: Int) -> some View {
+        // The show the visible card came from, not whatever the agent is on:
+        // this list sits in front of a card, and marking a different row would
+        // be pointing at something the user cannot see.
+        let isCurrent = controller.current?.category == category
+        return Button { controller.showCategory(category) } label: {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(isCurrent ? Color.accentColor : Color.clear)
+                    .frame(width: 6, height: 6)
+
+                Text(verbatim: category.label)
+                    .font(.system(size: 11, weight: isCurrent ? .semibold : .regular))
+                    .lineLimit(1)
+
+                Spacer(minLength: 6)
+
+                Text(verbatim: "\(count)")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .monospacedDigit()
+            }
+            .padding(.horizontal, 4)
+            .frame(height: CardLayout.rowHeight)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -501,12 +537,15 @@ struct CardBodyView: View {
 /// once when a card arrives, not per frame.
 @MainActor
 enum CardMeasure {
-    static func contentHeight(of card: InfoCard, context: [AgentSession]) -> Double {
+    /// `width` is the floating panel's unless given: the notch lays cards out
+    /// inside its own, narrower, island.
+    static func contentHeight(of card: InfoCard, context: [AgentSession],
+                              width: Double = CardLayout.width) -> Double {
         let finished = TypewriterReveal.Revealed(title: card.title, body: card.body,
                                                  isComplete: true)
         let host = NSHostingView(rootView:
             CardBodyView(card: card, shown: finished, context: context)
-                .frame(width: CardLayout.width))
+                .frame(width: width))
         return Double(host.fittingSize.height)
     }
 }

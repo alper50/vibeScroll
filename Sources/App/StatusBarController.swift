@@ -42,7 +42,21 @@ final class StatusBarController {
         rebuildMenu()
     }
 
+    /// Shown in the floating style only. In the notch the notch itself is
+    /// the always-visible surface, and a second glyph a few centimetres away
+    /// saying the same count is clutter; its menu moves to a right-click on
+    /// the notch (`NotchWindowController`), so nothing on it is lost.
+    func setVisible(_ visible: Bool) {
+        guard let item, item.isVisible != visible else { return }
+        item.isVisible = visible
+    }
+
     private func rebuildMenu() {
+        item?.menu = makeMenu()
+    }
+
+    /// The menu, freshly built. Also what a right-click on the notch opens.
+    func makeMenu() -> NSMenu {
         let menu = NSMenu()
 
         if latest.isEmpty {
@@ -114,7 +128,7 @@ final class StatusBarController {
         quit.target = self
         menu.addItem(quit)
 
-        item?.menu = menu
+        return menu
     }
 
     @objc private func clearSessions() { AppDaemon.shared.clearSessions() }

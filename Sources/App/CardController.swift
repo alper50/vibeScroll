@@ -86,11 +86,14 @@ final class CardController: ObservableObject {
             // otherwise leave the eyes stuck where they last looked. It governs
             // the idle flicks too: somebody who asked for still eyes meant
             // still, not "still except when you are not looking".
-            if followsPointer {
-                GazeModel.shared.startIdleMotion()
-            } else {
+            if !followsPointer {
                 GazeModel.shared.stopIdleMotion()
                 GazeModel.shared.rest()
+            } else if FaceMotion.running {
+                // Only while a face is on screen. In the notch style there
+                // are no eyes to move, and `FaceMotion` starts this when the
+                // floating face comes back.
+                GazeModel.shared.startIdleMotion()
             }
         }
     }
@@ -166,7 +169,7 @@ final class CardController: ObservableObject {
         ) else { return }
 
         activeCategory = card.category
-        present(card, context: relevant)
+        present(card, context: relevant, automatic: true)
     }
 
     // MARK: - Manual
@@ -186,7 +189,7 @@ final class CardController: ObservableObject {
         // Manual reads count: a card browsed to now won't resurface
         // automatically inside its repeat window.
         scheduler.recordShown(card, now: now)
-        present(card, context: context)
+        present(card, context: context, automatic: false)
     }
 
     /// What the session list should say about quota, or `nil` when there is
@@ -239,7 +242,7 @@ final class CardController: ObservableObject {
         activeCategory = category
         isBrowsing = true
         scheduler.recordShown(card, now: now)
-        present(card, context: context)
+        present(card, context: context, automatic: false)
     }
 
     /// Shows a card immediately, bypassing every gate. Used by the Settings
@@ -247,7 +250,12 @@ final class CardController: ObservableObject {
     /// not go through the scheduler at all.
     func preview(_ card: InfoCard) {
         activeCategory = card.category
-        present(card, context: [])
+        present(card, context: [], automatic: false)
+        // The notch does not open for cards by itself, but a preview is
+        // somebody asking to see one.
+        if DisplayStyleStore.shared.effective == .notch {
+            NotchWindowController.shared.expand(page: .card)
+        }
     }
 
     /// Working sessions at the last refresh, for the edge where the last one
@@ -385,12 +393,21 @@ final class CardController: ObservableObject {
     /// when no card is on screen.
     func openSessions() {
         guard current != nil || !sessions.isEmpty else { return }
+        if DisplayStyleStore.shared.effective == .notch {
+            suppressed = false
+            syncPanel()
+            NotchWindowController.shared.expand(page: .sessions)
+            return
+        }
         showSessions()
     }
 
     /// Menu bar toggle: away if it is up, back if it is not.
     func togglePanel() {
-        if suppressed || FaceWindowController.shared.frame == nil {
+        let faceUp = DisplayStyleStore.shared.effective == .notch
+            ? NotchWindowController.shared.isVisible
+            : FaceWindowController.shared.frame != nil
+        if suppressed || !faceUp {
             suppressed = false
             syncPanel()
         } else {
@@ -431,8 +448,37 @@ final class CardController: ObservableObject {
         isBrowsing = false
         mode = .card
         suppressed = true
-        CardWindowController.shared.hide()
-        FaceWindowController.shared.setVisible(false)
+        syncPanel()
+    }
+
+    /// vibeScroll was opened again while already running. With the menu bar
+    /// icon gone in the notch style, that is the way back after the panel
+    /// has been hidden by hand.
+    func reveal() {
+        suppressed = false
+        syncPanel()
+    }
+
+    /// The notch closed. Whatever was being browsed there has been put down,
+    /// so automatic cards may come again — the floating panel gets the same
+    /// from its close button, which the notch does not have.
+    func endBrowsing() {
+        guard isBrowsing || mode != .card else { return }
+        isBrowsing = false
+        mode = .card
+        syncPanel()
+    }
+
+    /// The style changed, or the notch came or went with a display.
+    func displayStyleChanged() {
+        NotchWindowController.shared.collapse()
+        if let current, DisplayStyleStore.shared.effective == .notch {
+            notchCardContentHeight = CardMeasure.contentHeight(
+                of: current, context: context,
+                width: NotchLayout.contentWidth(notchWidth: DisplayStyleStore.shared.notch?.notchWidth
+                                                ?? NotchLayout.fallbackNotchWidth))
+        }
+        syncPanel()
     }
 
     /// Set by `hidePanel`, cleared the moment anything new happens. A panel
@@ -472,8 +518,28 @@ final class CardController: ObservableObject {
     /// Two windows with opposite lifetimes: the face is the ambient layer and
     /// is up whenever there is an agent to watch, while the card is occasional
     /// and only up when it has something in it.
+    ///
+    /// The notch style draws the same state in one window instead of two: the
+    /// face goes up and down with the same rule, and the card waits inside it
+    /// rather than opening a panel of its own.
     private func syncPanel() {
         let windows = visibility
+        let notch = DisplayStyleStore.shared.effective == .notch
+        // Only while the floating face is on screen: the notch draws none.
+        FaceMotion.setRunning(windows.face && !notch)
+        StatusBarController.shared.setVisible(!notch)
+
+        if notch {
+            FaceWindowController.shared.setVisible(false)
+            CardWindowController.shared.hide()
+            // Up whenever it has not been put away by hand. When there is
+            // nothing to show it is only the notch — no wings, nothing drawn
+            // beside the camera — and costs nothing, while hovering the notch
+            // still opens the sessions and tasks behind it.
+            NotchWindowController.shared.setVisible(!suppressed)
+            return
+        }
+        NotchWindowController.shared.setVisible(false)
         FaceWindowController.shared.setVisible(windows.face)
 
         guard windows.card else {
@@ -512,10 +578,23 @@ final class CardController: ObservableObject {
     /// With the finished text rather than whatever the typewriter has shown so
     /// far, so the panel is the right size before the first letter and never
     /// grows while the card writes itself out.
-    private var cardContentHeight: Double = CardLayout.maxCardHeight
+    private(set) var cardContentHeight: Double = CardLayout.maxCardHeight
+    /// The same card laid out at the notch island's width.
+    private(set) var notchCardContentHeight: Double = CardLayout.maxCardHeight
 
-    private func present(_ card: InfoCard, context: [AgentSession]) {
+    /// `automatic` is a card the scheduler chose rather than one somebody asked
+    /// for. Only those raise the notch's badge and make the face look up.
+    private func present(_ card: InfoCard, context: [AgentSession], automatic: Bool) {
         cardContentHeight = CardMeasure.contentHeight(of: card, context: context)
+        // Only when the notch is what will show it: a second off-screen
+        // layout per card is cheap, but not free, and the floating face never
+        // reads this. A style switch mid-card lands on the clamp at worst.
+        if DisplayStyleStore.shared.effective == .notch {
+            notchCardContentHeight = CardMeasure.contentHeight(
+                of: card, context: context,
+                width: NotchLayout.contentWidth(notchWidth: DisplayStyleStore.shared.notch?.notchWidth
+                                                ?? NotchLayout.fallbackNotchWidth))
+        }
         // Every way a card reaches the screen — automatic, Next, the picker —
         // comes through here, having just been recorded as shown. Saved here
         // once, so no path can forget to.
@@ -525,5 +604,6 @@ final class CardController: ObservableObject {
         mode = .card
         suppressed = false
         syncPanel()
+        NotchWindowController.shared.cardArrived(card, automatic: automatic)
     }
 }

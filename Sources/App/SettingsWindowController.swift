@@ -15,7 +15,9 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
     private var window: NSWindow?
 
-    func show() {
+    /// Opens the window, on `tab` when given.
+    func show(tab: SettingsView.Tab? = nil) {
+        if let tab { SettingsNavigation.shared.tab = tab }
         // An accessory app can own key windows, but only once it is active —
         // without this the window appears behind whatever the user was in.
         NSApp.activate(ignoringOtherApps: true)

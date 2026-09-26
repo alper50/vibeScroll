@@ -31,6 +31,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // provider and touches the Keychain, so it stays opt-in.
         UsageProbe.shared.start()
         FaceModel.shared.start()
+        // Before the controller's first sync: it asks this which style to
+        // draw, and the notch has to be measured by then.
+        DisplayStyleStore.shared.start()
         CardController.shared.start()
         // A task still marked `running` is left over from a crash or a force
         // quit; its process is long gone, and leaving the row would block the
@@ -54,10 +57,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Nothing visible happens when a menu bar app launches — an icon joins
         // fifteen others. On the very first run the settings window is opened
         // so there is something to read and somewhere to start.
-        if !UserDefaults.standard.bool(forKey: Self.hasLaunchedKey) {
-            UserDefaults.standard.set(true, forKey: Self.hasLaunchedKey)
+        //
+        // On a Mac with a notch the style question comes first, once, and the
+        // settings follow it on a first run — two windows at once is two
+        // things to read and no order to read them in. Someone who has used
+        // the app before gets only the question.
+        let firstRun = !UserDefaults.standard.bool(forKey: Self.hasLaunchedKey)
+        UserDefaults.standard.set(true, forKey: Self.hasLaunchedKey)
+        if DisplayStyleStore.shared.shouldAsk {
+            DisplayStyleChooserController.shared.show {
+                if firstRun { SettingsWindowController.shared.show() }
+            }
+        } else if firstRun {
             SettingsWindowController.shared.show()
         }
+    }
+
+    /// Opening the app again — Spotlight, Finder, the Dock — while it is
+    /// already running. In the notch style there is no menu bar icon, so this
+    /// is how a panel hidden by hand comes back.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        CardController.shared.reveal()
+        return false
     }
 
     func applicationWillTerminate(_ notification: Notification) {

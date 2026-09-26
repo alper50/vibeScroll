@@ -350,6 +350,64 @@ rather than sitting inside the mouth as a pink patch.
 and ten scenarios that run real input through the real pipeline, so what appears
 there is what the desktop would show.
 
+## Floating or in the notch
+
+The face can sit in either of two places, chosen once on first launch and
+changeable under **Settings → General → Appearance**:
+
+- **Floating** — the face in its own orb, anywhere on the desktop, with the
+  card hanging off it. What vibeScroll has always been.
+- **In the notch** — the session quota as a ring with its percentage on one
+  side of the camera; on the other, the agent most of the live sessions
+  belong to — its own app icon, read from the installed app (Claude, Cursor,
+  …), or its name when it is command-line only — and how many are live,
+  orange while one is waiting. No face: the
+  notch is for glancing, and a number reads faster. Hovering opens three
+  pages — **Sessions**, **Card** and **Tasks** — and leaving closes them; a
+  click opens them and keeps them open until a click elsewhere.
+
+Opening grows the island mostly downward and a little sideways, on a spring
+that overshoots slightly — the pop — with the pages already laid out
+underneath and uncovered as it grows. Closing uses a spring that does not
+bounce. Pages slide sideways,
+by tab or by dragging. A wing with nothing to show folds back into the
+notch — the right one with no agent running, the left one with no quota
+reading — so there is never black beside the camera saying nothing.
+
+Only the presentation changes. Sessions, cards, the face's mood, quota and the
+queue are the same objects either way, and `CardController.syncPanel` is the
+one place that decides which windows draw them.
+
+In the notch style the menu bar icon is hidden — the notch is already the
+always-visible surface — and its menu opens on a right-click of the notch
+instead. It comes back with the floating style, including the automatic
+fallback when the lid closes. A panel hidden by hand returns when vibeScroll is
+opened again, or when the next agent starts.
+
+In the notch, cards do not unfold on their own. A dot appears on the quota
+ring and stays until the card page is opened; opening lands on the card when
+one is waiting. Closing the
+island ends any browsing, so automatic cards carry on.
+
+The question is only asked on a Mac with a notched display. Without one the
+notch option is shown disabled. If the notch style was chosen and the notched
+display goes away — the lid closed on an external monitor — the face floats
+until it comes back, and the preference is left alone.
+
+Cost: the island is a black fill rather than a material, the face's clocks do
+not run at all in this style, the closed island redraws only when the quota or
+the agents change, and nothing in the open pages exists while it is closed.
+The window is sized once for the largest the island can become and never
+resized; only the shape animates. Everything outside the shape is transparent
+and passes clicks through to the menu bar. *Hide in full-screen apps* leaves
+`.fullScreenAuxiliary` off the window so the window server keeps it off
+full-screen Spaces — nothing is polled and no private API is read.
+
+`vibescroll notch <dir>` draws the island in each state on the real notch and
+writes PNGs, the same kind of affordance as `vibescroll face`. The flared-top
+shape follows [claude-notch-tracker](https://github.com/stevemcqueenz/claude-notch-tracker)
+and [pookify](https://github.com/eyadhammouda/pookify) (both MIT).
+
 ## Content
 
 Cards are authored and served by [vibeScroll-backend](../vibeScroll-backend);
