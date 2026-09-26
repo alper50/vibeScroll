@@ -239,6 +239,40 @@ git, so nothing about it is Claude-specific.
 computed and displayed but nothing acts on it — the mechanism is worth proving
 with a person pressing the button before it is trusted to start work at 03:00.
 
+## Permissions
+
+Settings → Permissions answers the question a permission prompt leaves behind:
+*did I just allow that for good?* It lists every permission Claude Code, Codex
+and Cursor have saved to disk, in plain words, next to the file that holds it.
+
+| Agent | Files read |
+| --- | --- |
+| Claude Code | managed policy, `~/.claude/settings.json`, and per project `.claude/settings.json` and `.claude/settings.local.json` — `allow` / `ask` / `deny` rules, `additionalDirectories`, `defaultMode` |
+| Codex | `~/.codex/config.toml` (approval policy, sandbox, writable roots, trusted projects) and `rules/*.rules`, where "don't ask again" is written as `prefix_rule(...)` |
+| Cursor | `permissions.json` (terminal and MCP allowlists) and the CLI's `cli-config.json` / `.cursor/cli.json` |
+
+Projects are found four ways, because no one source has them all: the
+projects Claude Code lists, its transcript folders traced back to real
+directories, live sessions and queued tasks, and a bounded look under Desktop,
+Documents and the usual code folders for any project carrying an agent folder.
+
+Each entry gets a rough risk — high for any shell command, a whole interpreter,
+the home folder, or a mode that never asks — and can be removed when it lives
+in anything but a managed policy, which is an administrator's and shown
+read-only. A file git tracks is removable too — it is usually your own
+repository — but the confirmation says the change will be a modification to
+commit, and once committed it reaches everyone with the repository. Removal
+asks first, refuses if the file changed since it was read, and can be undone.
+Picking a folder by hand scans it and the projects inside it, and always says
+what it found, including nothing. Codex's `config.toml` is
+shown but not rewritten.
+
+Two things it deliberately does not claim to show. Approvals given "for this
+session" live inside the running agent and end with it; nothing outside can see
+them, and they need no removing. And folder access at the macOS level
+(Desktop, Documents, Downloads) belongs to the editor or terminal, not the
+agent — the screen links to that pane of System Settings instead.
+
 ## The face
 
 A small face lives in its own window on the desktop, and the card panel hangs

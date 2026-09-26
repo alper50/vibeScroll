@@ -5,7 +5,7 @@ import VibeScrollCore
 struct SettingsView: View {
     /// Tagged so the setup checklist can send somebody to the tab that finishes
     /// the step it is describing.
-    enum Tab: Hashable { case general, integrations, content, tasks }
+    enum Tab: Hashable { case general, integrations, content, tasks, permissions }
 
     @State private var tab: Tab = .general
 
@@ -23,8 +23,16 @@ struct SettingsView: View {
             TasksSettingsView()
                 .tabItem { Label("Tasks", systemImage: "checklist") }
                 .tag(Tab.tasks)
+            PermissionsSettingsView()
+                .tabItem { Label("Permissions", systemImage: "lock.shield") }
+                .tag(Tab.permissions)
         }
-        .frame(width: 560, height: 460)
+        // Wide enough for every tab label side by side. At 560pt the fifth tab
+        // pushed the Turkish labels past the edge, and macOS then folds the
+        // whole tab bar into a single » overflow button — the tabs are still
+        // there, but hidden behind a menu. 680pt is the measured minimum for
+        // five; the rest is room for one more.
+        .frame(width: 700, height: 540)
     }
 }
 

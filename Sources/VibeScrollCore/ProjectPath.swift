@@ -32,6 +32,34 @@ public enum ProjectPath {
         })
     }
 
+    /// The directory a Claude Code transcript folder was named after, found
+    /// by walking the real file system.
+    ///
+    /// The encoding turns every non-alphanumeric into "-", so a folder name
+    /// alone cannot say whether `projects-my-app` is `projects/my-app` or
+    /// `projects/my/app`. Matching it one real directory at a time can: each
+    /// step keeps only children whose encoding continues the name. `nil` when
+    /// no existing directory encodes to it — the project was moved or deleted.
+    public static func decodeTranscriptFolder(
+        _ name: String, listDirectory: (String) -> [String]
+    ) -> String? {
+        func search(_ path: String, _ encoded: String) -> String? {
+            if encoded == name { return path }
+            guard name.hasPrefix(encoded) else { return nil }
+            for child in listDirectory(path) {
+                let next = path == "/" ? "/" + child : path + "/" + child
+                let candidate = transcriptFolderName(for: next)
+                guard name.hasPrefix(candidate) else { continue }
+                // A match must end exactly at a component boundary in the name.
+                let rest = name.dropFirst(candidate.count)
+                guard rest.isEmpty || rest.hasPrefix("-") else { continue }
+                if let found = search(next, candidate) { return found }
+            }
+            return nil
+        }
+        return search("/", "-")
+    }
+
     /// The directory a Claude Code session started in, recovered from where
     /// its transcript lives.
     ///

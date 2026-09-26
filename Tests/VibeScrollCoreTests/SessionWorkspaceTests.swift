@@ -84,4 +84,34 @@ final class SessionWorkspaceTests: XCTestCase {
                           transcript: transcript), now: now)
         XCTAssertEqual(store.session(id: "s")?.workspace, "/Users/a/projects/vibescrol")
     }
+
+    // MARK: - Decoding transcript folders
+
+    private let tree: [String: [String]] = [
+        "/": ["Users"],
+        "/Users": ["a"],
+        "/Users/a": ["projects", "my-app"],
+        "/Users/a/projects": ["my-app", "my"],
+        "/Users/a/projects/my": ["app"],
+        "/Users/a/projects/my-app": [],
+    ]
+
+    func testATranscriptFolderIsTracedToTheRealDirectory() {
+        XCTAssertEqual(ProjectPath.decodeTranscriptFolder(
+            "-Users-a-projects-my-app", listDirectory: { self.tree[$0] ?? [] }),
+            "/Users/a/projects/my-app")
+    }
+
+    func testAnAmbiguousNameStillResolvesToADirectoryThatExists() {
+        // "my-app" and "my/app" both encode the same; either real one will do,
+        // and a path that does not exist is never returned.
+        let found = ProjectPath.decodeTranscriptFolder(
+            "-Users-a-projects-my-app", listDirectory: { self.tree[$0] ?? [] })
+        XCTAssertTrue(["/Users/a/projects/my-app", "/Users/a/projects/my/app"].contains(found))
+    }
+
+    func testAMovedProjectDecodesToNothing() {
+        XCTAssertNil(ProjectPath.decodeTranscriptFolder(
+            "-Users-a-projects-gone", listDirectory: { self.tree[$0] ?? [] }))
+    }
 }
