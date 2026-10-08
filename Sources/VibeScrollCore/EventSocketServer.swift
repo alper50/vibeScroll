@@ -20,12 +20,15 @@ public enum SocketError: Error, Equatable {
 /// of them was already decided by whichever won the race to `connect`.
 public final class EventSocketServer: @unchecked Sendable {
     private let path: String
-    private let acceptQueue = DispatchQueue(label: "vibescroll.socket.accept")
+    private let acceptQueue = DispatchQueue(label: "vibescroll.socket.accept", qos: .userInitiated)
     /// Concurrent on purpose. `handleClient` blocks in `read`, and doing that on
     /// the accept loop meant one stalled hook process stopped every other
     /// agent's events from arriving at all.
+    /// User-initiated: a hook event is what the alerts and the notch react
+    /// to, and on a Mac left running for hours App Nap would otherwise defer
+    /// default-priority work along with everything else in a background app.
     private let clientQueue = DispatchQueue(
-        label: "vibescroll.socket.client", attributes: .concurrent)
+        label: "vibescroll.socket.client", qos: .userInitiated, attributes: .concurrent)
 
     /// Guards `running` and `listenFD`: `stop()` writes both from the caller's
     /// thread while the accept loop reads them on `acceptQueue`.

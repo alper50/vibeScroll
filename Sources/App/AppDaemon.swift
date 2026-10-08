@@ -212,23 +212,41 @@ final class AppDaemon: ObservableObject {
             notifyIfNeeded(before: before, session: session)
             return
         }
-        Task.detached(priority: .utility) { [weak self] in
+        // The alert waits only for the question check: a read of the last
+        // 128 KB, taking no lock. Counting the turn's tokens is a scan from
+        // the last offset — the whole file after a relaunch, 150 MB for a long
+        // session — behind a lock every session shares; when the sound waited
+        // for that too it came late, and when the next turn began in the
+        // meantime the state had moved on and it never came at all.
+        //
+        // User-initiated, not utility: somebody is waiting to hear this, and
+        // utility work is the first thing App Nap defers on a Mac that has
+        // been left running.
+        Task.detached(priority: .userInitiated) { [weak self] in
             let isQuestion = TranscriptReader.latestAssistantText(at: path)
                 .map(QuestionDetector.looksLikeQuestion) ?? false
-            // The turn just ended either way — bank whatever it burned.
-            let delta = TranscriptReader.newUsageDelta(at: path)
             await MainActor.run { [weak self] in
                 guard let self else { return }
-                if let delta, delta.tokens > 0 {
-                    self.store.addUsage(id: sessionId, tokens: delta.tokens, costUSD: delta.costUSD)
-                }
-                if let delta { self.reportRateLimit(delta.apiErrors, sessionId: sessionId) }
                 if isQuestion {
                     self.store.refineState(id: sessionId, from: .done, to: .waiting, since: stateSince)
                 }
-                guard let final = self.store.session(id: sessionId) else { return }
-                self.notifyIfNeeded(before: before, session: final)
+                if let final = self.store.session(id: sessionId) {
+                    self.notifyIfNeeded(before: before, session: final)
+                }
                 self.refresh()
+            }
+            // The turn just ended either way — bank whatever it burned, at
+            // the priority bookkeeping deserves.
+            Task.detached(priority: .utility) { [weak self] in
+                guard let delta = TranscriptReader.newUsageDelta(at: path) else { return }
+                await MainActor.run { [weak self] in
+                    guard let self else { return }
+                    if delta.tokens > 0 {
+                        self.store.addUsage(id: sessionId, tokens: delta.tokens, costUSD: delta.costUSD)
+                        self.refresh()
+                    }
+                    self.reportRateLimit(delta.apiErrors, sessionId: sessionId)
+                }
             }
         }
     }

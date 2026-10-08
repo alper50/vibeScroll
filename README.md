@@ -130,8 +130,20 @@ first is what avoids that; editing afterwards is not.
 `scripts/make-sounds.py` records the source, the licence and the exact windows
 kept, so the assets can be rebuilt rather than merely trusted.
 
-A burst is throttled to one sound every two seconds. Four agents finishing
-together should be one chime, not four overlapping ones.
+A burst is merged into one sound (`SoundGate`). Four agents finishing
+together should be one chime, not four overlapping ones — but a burst is never
+allowed to swallow something more important: an agent that starts waiting on
+you a moment after another finished is held to the end of a one-second window
+and played then. Within the window only the most important sound is kept
+(waiting, then quota, then done). The old rule dropped everything for two
+seconds after any sound, and across a busy afternoon that read as alerts going
+missing.
+
+The *done* sound waits only for the question check — the last 128 KB of the
+transcript, no lock — and not for the turn's token count, which can be a scan
+of the whole file after a relaunch. Hook events and that check run at
+user-initiated priority, so on a Mac left running for hours App Nap does not
+defer them along with the rest of a background app.
 
 ## Quota
 

@@ -40,6 +40,16 @@ final class SoundSettings: ObservableObject {
         }
 
         var defaultsKey: String { "vibescroll.sound.\(rawValue)" }
+
+        /// For merging a burst: someone blocked on you outranks a quota
+        /// warning, which outranks a turn finishing.
+        var priority: Int {
+            switch self {
+            case .done: return 1
+            case .quota: return 2
+            case .waiting: return 3
+            }
+        }
     }
 
     @Published private(set) var selections: [Event: SoundSelection] = [:]
@@ -51,11 +61,12 @@ final class SoundSettings: ObservableObject {
     /// resource missing from the bundle must not appear as a dead option.
     let availableBundledNames: [String]
 
-    /// Several agents finishing at once would otherwise overlap into noise.
-    /// First one through wins; the rest of the burst is dropped rather than
-    /// queued, because a delayed "done" chime is worse than a missing one.
-    private let throttle = PerKeyThrottle(interval: 2)
-    private static let throttleKey = "any-sound"
+    /// Several agents finishing at once would otherwise overlap into noise,
+    /// so a burst is merged into one sound — see `SoundGate`. The window is
+    /// short: a held sound is at most a second late, and only when another
+    /// has just played.
+    private var gate = SoundGate(window: 1)
+    private var pendingWork: DispatchWorkItem?
 
     private init() {
         availableSystemNames = SoundSelection.systemNames.filter { NSSound(named: $0) != nil }
@@ -81,8 +92,31 @@ final class SoundSettings: ObservableObject {
 
     /// Plays the sound for `event`, subject to the burst throttle.
     func play(_ event: Event) {
-        guard throttle.shouldRun(Self.throttleKey, now: Date()) else { return }
-        preview(selection(for: event))
+        switch gate.request(priority: event.priority, now: Date()) {
+        case .playNow:
+            pendingWork?.cancel()
+            pendingWork = nil
+            preview(selection(for: event))
+        case .playAt(let date):
+            // One timer however many join the burst: the gate keeps only the
+            // most important, and that is what is read when it fires.
+            guard pendingWork == nil else { return }
+            let work = DispatchWorkItem { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.pendingWork = nil
+                    guard let priority = self.gate.firePending(now: Date()),
+                          let held = Event.allCases.first(where: { $0.priority == priority })
+                    else { return }
+                    self.preview(self.selection(for: held))
+                }
+            }
+            pendingWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + max(0, date.timeIntervalSinceNow),
+                                          execute: work)
+        case .drop:
+            break
+        }
     }
 
     /// Plays a selection immediately, bypassing the throttle. Used by the
