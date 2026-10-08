@@ -105,6 +105,16 @@ final class DisplayStyleTests: XCTestCase {
         XCTAssertNil(NotchLayout.quotaWindow(in: nil), "no reading, nothing to show")
     }
 
+    func testTheQuotaGoesWithTheAgentsWhenIdleIsNotKept() {
+        XCTAssertTrue(NotchLayout.showsQuota(hasReading: true, agentsLive: true, keepWhenIdle: false))
+        XCTAssertFalse(NotchLayout.showsQuota(hasReading: true, agentsLive: false, keepWhenIdle: false),
+                       "idle: the ring leaves with the agents, like the floating face")
+        XCTAssertTrue(NotchLayout.showsQuota(hasReading: true, agentsLive: false, keepWhenIdle: true),
+                      "asked to stay out when idle: it stays")
+        XCTAssertFalse(NotchLayout.showsQuota(hasReading: false, agentsLive: true, keepWhenIdle: true),
+                       "no reading, nothing to draw")
+    }
+
     func testWithoutASessionWindowTheTightestIsShown() {
         let snapshot = QuotaSnapshot(provider: "codex", displayName: "Codex", windows: [
             QuotaWindow(kind: "weekly_all", percentUsed: 40, severity: .normal, resetsAt: nil, isActive: true),

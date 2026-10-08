@@ -372,7 +372,12 @@ underneath and uncovered as it grows. Closing uses a spring that does not
 bounce. Pages slide sideways,
 by tab or by dragging. A wing with nothing to show folds back into the
 notch — the right one with no agent running, the left one with no quota
-reading — so there is never black beside the camera saying nothing.
+reading — so there is never black beside the camera saying nothing. When
+nothing is running and *Keep the face on screen when nothing is running* is
+off, the quota ring leaves with the agents, the way the floating face does, and
+the island is the bare notch. A waiting card is never a mark of its own — it is
+a dot on the quota ring, or on the agent's icon when there is no ring, and on
+the card tab once open.
 
 Only the presentation changes. Sessions, cards, the face's mood, quota and the
 queue are the same objects either way, and `CardController.syncPanel` is the

@@ -87,6 +87,16 @@ public enum NotchLayout {
         return openOutset + (hasContent ? 0 : wing + edgeInset)
     }
 
+    /// Whether the closed island shows the quota ring.
+    ///
+    /// While an agent is running or waiting, always. Idle, only when the face
+    /// was asked to stay out when nothing is running: otherwise the ring goes
+    /// with the agents, the same way the floating face leaves. A card waiting
+    /// to be read does not keep it either: idle means the bare notch.
+    public static func showsQuota(hasReading: Bool, agentsLive: Bool, keepWhenIdle: Bool) -> Bool {
+        hasReading && (agentsLive || keepWhenIdle)
+    }
+
     /// Who is doing the work, for the right wing.
     public struct AgentSummary: Equatable, Sendable {
         /// The agent with the most sessions running or waiting.

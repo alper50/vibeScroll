@@ -119,28 +119,30 @@ struct NotchIslandView: View {
     /// while a card is waiting to be read.
     @ViewBuilder
     private var quota: some View {
-        let unread = model.inbox.hasUnread
         ZStack(alignment: .topTrailing) {
-            if let window = model.quota {
+            if model.showsQuota, let window = model.quota {
                 QuotaRing(window: window)
                     .frame(width: 26, height: 26)
                     .help(Text(verbatim: "\(window.label) \(window.percentUsed)%"))
-            } else if unread {
-                Image(systemName: "book.closed.fill")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color.accentColor)
-                    .frame(width: 26, height: 26)
-            }
-            if unread, model.quota != nil {
-                Circle()
-                    .fill(Color.accentColor)
-                    .frame(width: 7, height: 7)
-                    .overlay(Circle().strokeBorder(Color.black, lineWidth: 1.5))
-                    .offset(x: 2, y: -1)
-                    .transition(.scale.combined(with: .opacity))
+                unreadDot(on: model.inbox.hasUnread)
             }
         }
-        .animation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.7), value: unread)
+    }
+
+    /// A waiting card, marked on whatever is already there — never a mark of
+    /// its own, which would keep a wing out just to say "there is a card" on
+    /// an island that is otherwise idle. The card tab in the open island
+    /// carries the same dot.
+    @ViewBuilder
+    private func unreadDot(on: Bool) -> some View {
+        if on {
+            Circle()
+                .fill(Color.accentColor)
+                .frame(width: 7, height: 7)
+                .overlay(Circle().strokeBorder(Color.black, lineWidth: 1.5))
+                .offset(x: 2, y: -1)
+                .transition(.scale.combined(with: .opacity))
+        }
     }
 
     /// The agent with the most live sessions — its own app icon when it is
@@ -155,6 +157,10 @@ struct NotchIslandView: View {
                         .resizable()
                         .interpolation(.high)
                         .frame(width: 18, height: 18)
+                        // No ring to carry the card's dot: it rides here.
+                        .overlay(alignment: .topTrailing) {
+                            unreadDot(on: model.inbox.hasUnread && !model.showsQuota)
+                        }
                 } else {
                     Text(verbatim: TickerFormatter.agentLabel(for: summary.leader))
                         .font(.system(size: 10, weight: .semibold))

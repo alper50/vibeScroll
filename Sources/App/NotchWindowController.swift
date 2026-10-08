@@ -314,8 +314,8 @@ final class NotchWindowController: NSObject {
 
     /// A card reached the notch.
     ///
-    /// The island does not open for it. A dot appears beside the quota and
-    /// stays until the card page is opened — somebody reading their editor
+    /// The island does not open for it. A dot appears on the quota ring (or
+    /// the agent's icon) and stays until the card page is opened — somebody reading their editor
     /// gets a glance's worth of signal, not a panel.
     func cardArrived(_ card: InfoCard, automatic: Bool) {
         guard DisplayStyleStore.shared.effective == .notch else { return }
@@ -379,17 +379,17 @@ final class NotchModel: ObservableObject {
     /// The session quota, when the probe has a reading.
     var quota: QuotaWindow? { NotchLayout.quotaWindow(in: UsageProbe.shared.snapshot) }
 
-    /// The left wing: the quota ring, or the unread-card mark on its own.
-    ///
-    /// The ring stands down when nothing is going on and the face was asked
-    /// not to stay out when idle — the same setting that sends the floating
-    /// face away. The island is then just the notch, and hovering it still
-    /// opens the pages.
-    var hasLeftContent: Bool {
-        if inbox.hasUnread { return true }
-        guard quota != nil else { return false }
-        return CardController.shared.showsFaceWhenIdle || hasRightContent
+    /// The quota ring, when it belongs on screen: see `NotchLayout.showsQuota`.
+    /// With nothing to show the island is just the notch, and hovering it
+    /// still opens the pages.
+    var showsQuota: Bool {
+        NotchLayout.showsQuota(hasReading: quota != nil, agentsLive: hasRightContent,
+                               keepWhenIdle: CardController.shared.showsFaceWhenIdle)
     }
+
+    /// The left wing: the quota ring. A waiting card does not hold a wing
+    /// out on its own; it is a dot on whatever is already showing.
+    var hasLeftContent: Bool { showsQuota }
 
     /// Who the live sessions belong to, for the right wing.
     var agents: NotchLayout.AgentSummary? {

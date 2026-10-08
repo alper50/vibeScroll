@@ -70,6 +70,11 @@ private final class NotchPreviewDelegate: NSObject, NSApplicationDelegate {
         CardController.shared.consider(sessions: sessions, now: now)
         await pause(1.0)
         save("1-collapsed")
+        // No quota reading yet: a waiting card's dot rides on the agent icon.
+        notch.model.inbox.arrived(cardID: "early-card", alreadyVisible: false)
+        await pause(0.6)
+        save("1b-agent-dot")
+        notch.model.inbox.viewed()
 
         UsageProbe.shared.showSample(QuotaSnapshot(
             provider: "claude", displayName: "Claude",
@@ -90,6 +95,20 @@ private final class NotchPreviewDelegate: NSObject, NSApplicationDelegate {
         await pause(1.0)
         save("2b-quota-no-agents-open")
         notch.collapse()
+        await pause(0.8)
+
+        // Idle with the face told not to stay out: the ring goes too, and a
+        // card still waiting does not bring it back. Bare notch both times.
+        let keep = CardController.shared.showsFaceWhenIdle
+        CardController.shared.showsFaceWhenIdle = false
+        notch.model.inbox.arrived(cardID: "idle-card", alreadyVisible: false)
+        await pause(0.8)
+        save("2c-idle-unread")
+        notch.model.inbox.viewed()
+        await pause(0.8)
+        save("2d-idle")
+        CardController.shared.showsFaceWhenIdle = keep
+
         CardController.shared.consider(sessions: sessions, now: now)
         await pause(0.8)
 
